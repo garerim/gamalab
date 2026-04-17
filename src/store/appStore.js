@@ -31,6 +31,9 @@ export const useAppStore = create((set, get) => ({
   viewMode: 'sql', // 'sql' | 'browse'
   activeTable: null, // { schema, name } | null
 
+  // Theme
+  theme: (typeof localStorage !== 'undefined' && localStorage.getItem('gamalab-theme')) || 'dark',
+
   // Notifications
   toast: null,
 
@@ -96,6 +99,20 @@ export const useAppStore = create((set, get) => ({
   setEditTableDialogOpen: (open) => set({ editTableDialogOpen: open }),
   openEditTableDialog: (schema, name) =>
     set({ editTableTarget: { schema, name }, editTableDialogOpen: true }),
+
+  setTheme: (theme) => {
+    set({ theme })
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', theme === 'dark')
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('gamalab-theme', theme)
+    }
+  },
+  toggleTheme: () => {
+    const next = get().theme === 'dark' ? 'light' : 'dark'
+    get().setTheme(next)
+  },
 
   tablesRefreshToken: 0,
   bumpTablesRefresh: () => set({ tablesRefreshToken: get().tablesRefreshToken + 1 }),

@@ -31,11 +31,13 @@ const MONACO_OPTIONS = {
 }
 
 export function QueryEditor({ onRun }) {
-  const { currentQuery, setCurrentQuery, queryRunning, showToast } = useAppStore()
+  const { currentQuery, setCurrentQuery, queryRunning, showToast, theme } = useAppStore()
   const editorRef = useRef(null)
+  const monacoRef = useRef(null)
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
+    monacoRef.current = monaco
     monaco.editor.defineTheme('gamalab-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -55,7 +57,26 @@ export function QueryEditor({ onRun }) {
         'editor.selectionBackground': '#264f7850',
       },
     })
-    monaco.editor.setTheme('gamalab-dark')
+    monaco.editor.defineTheme('gamalab-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: 'keyword.sql', foreground: '0369A1', fontStyle: 'bold' },
+        { token: 'string.sql', foreground: '15803D' },
+        { token: 'number.sql', foreground: 'B45309' },
+        { token: 'comment.sql', foreground: '64748B', fontStyle: 'italic' },
+      ],
+      colors: {
+        'editor.background': '#FFFFFF',
+        'editor.foreground': '#1E293B',
+        'editorLineNumber.foreground': '#CBD5E1',
+        'editorLineNumber.activeForeground': '#0369A1',
+        'editor.lineHighlightBackground': '#F1F5F9',
+        'editorCursor.foreground': '#0369A1',
+        'editor.selectionBackground': '#BAE6FD80',
+      },
+    })
+    monaco.editor.setTheme(theme === 'dark' ? 'gamalab-dark' : 'gamalab-light')
 
     editor.addAction({
       id: 'run-query',
@@ -116,6 +137,12 @@ export function QueryEditor({ onRun }) {
     return () => window.removeEventListener('keydown', handler)
   }, [currentQuery, onRun])
 
+  useEffect(() => {
+    if (monacoRef.current) {
+      monacoRef.current.editor.setTheme(theme === 'dark' ? 'gamalab-dark' : 'gamalab-light')
+    }
+  }, [theme])
+
   return (
     <div className="flex h-full w-full flex-col bg-background">
       <div className="flex h-9 items-center justify-between border-b border-border bg-card px-2">
@@ -140,7 +167,7 @@ export function QueryEditor({ onRun }) {
         <Editor
           height="100%"
           defaultLanguage="sql"
-          theme="gamalab-dark"
+          theme={theme === 'dark' ? 'gamalab-dark' : 'gamalab-light'}
           value={currentQuery}
           onChange={(v) => setCurrentQuery(v ?? '')}
           onMount={handleMount}

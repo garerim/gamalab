@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Info, FlaskConical, Play, Database } from 'lucide-react'
+import { Plus, RefreshCw, Info, FlaskConical, Play, Database, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAppStore } from '@/store/appStore'
@@ -8,7 +8,7 @@ import { useDatabase } from '@/hooks/useDatabase'
 export function Toolbar({ onRunQuery }) {
   const { dockerStatus } = useDocker()
   const { activeConnection } = useDatabase()
-  const { setCreateDialogOpen, setAboutOpen, queryRunning, currentQuery } = useAppStore()
+  const { setCreateDialogOpen, setAboutOpen, queryRunning, currentQuery, theme, toggleTheme } = useAppStore()
 
   const { refreshContainers } = useDocker()
 
@@ -72,6 +72,19 @@ export function Toolbar({ onRunQuery }) {
         ) : (
           <Badge variant="outline">Checking…</Badge>
         )}
+
+        <Button
+          size="iconSm"
+          variant="ghost"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )}
+        </Button>
 
         <Button size="iconSm" variant="ghost" onClick={() => setAboutOpen(true)} title="About">
           <Info className="h-4 w-4" />
