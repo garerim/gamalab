@@ -24,7 +24,8 @@ contextBridge.exposeInMainWorld('gamalab', {
     listAllTables: (id) => ipcRenderer.invoke('db:list-all-tables', id),
     listSchemas: (id) => ipcRenderer.invoke('db:list-schemas', id),
     listColumns: (id, schema, table) => ipcRenderer.invoke('db:list-columns', id, schema, table),
-    countRows: (id, schema, table) => ipcRenderer.invoke('db:count-rows', id, schema, table),
+    countRows: (id, schema, table, filters) =>
+      ipcRenderer.invoke('db:count-rows', id, schema, table, filters),
     browseTable: (id, schema, table, options) =>
       ipcRenderer.invoke('db:browse-table', id, schema, table, options),
   },

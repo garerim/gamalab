@@ -153,8 +153,8 @@ ipcMain.handle('db:list-columns', async (_evt, id, schema, table) => {
   return await dbService.listColumns(id, schema, table)
 })
 
-ipcMain.handle('db:count-rows', async (_evt, id, schema, table) => {
-  return await dbService.countTableRows(id, schema, table)
+ipcMain.handle('db:count-rows', async (_evt, id, schema, table, filters) => {
+  return await dbService.countTableRows(id, schema, table, filters)
 })
 
 ipcMain.handle('db:browse-table', async (_evt, id, schema, table, options) => {

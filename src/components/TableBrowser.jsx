@@ -18,6 +18,7 @@ import {
   X,
   Pencil,
   Check,
+  Filter as FilterIcon,
   Table as TableIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -166,6 +167,170 @@ function CellEditor({ editing, setEditing, saving, onSave, onCancel, inputRef })
   )
 }
 
+const OPS_TEXT = ['=', '!=', 'LIKE', 'ILIKE', 'IS NULL', 'IS NOT NULL']
+const OPS_NUMERIC = ['=', '!=', '<', '<=', '>', '>=', 'BETWEEN', 'IS NULL', 'IS NOT NULL']
+const OPS_BOOL = ['IS TRUE', 'IS FALSE', 'IS NULL', 'IS NOT NULL']
+const OPS_JSON = ['IS NULL', 'IS NOT NULL']
+
+function opsForColumn(col) {
+  if (!col) return OPS_TEXT
+  if (isBooleanType(col)) return OPS_BOOL
+  if (isJsonType(col)) return OPS_JSON
+  if (isNumericType(col) || /date|timestamp|time/i.test(col.udt_name)) return OPS_NUMERIC
+  return OPS_TEXT
+}
+
+function isNullaryOp(op) {
+  return op === 'IS NULL' || op === 'IS NOT NULL' || op === 'IS TRUE' || op === 'IS FALSE'
+}
+
+function inputTypeForColumn(col) {
+  if (!col) return 'text'
+  if (isNumericType(col)) return 'number'
+  if (col.udt_name === 'date') return 'date'
+  if (/timestamp/i.test(col.udt_name)) return 'datetime-local'
+  return 'text'
+}
+
+function FilterPanel({ columns, draftFilters, setDraftFilters, applyFilters, activeFilters }) {
+  const updateFilter = (idx, patch) => {
+    setDraftFilters((curr) => curr.map((f, i) => (i === idx ? { ...f, ...patch } : f)))
+  }
+  const removeFilter = (idx) => {
+    setDraftFilters((curr) => curr.filter((_, i) => i !== idx))
+  }
+  const addFilter = () => {
+    const firstCol = columns[0]
+    if (!firstCol) return
+    const ops = opsForColumn(firstCol)
+    setDraftFilters((curr) => [
+      ...curr,
+      { column: firstCol.name, op: ops[0], value: '', value2: '' },
+    ])
+  }
+
+  // Deep-ish comparison against applied filters for the Apply button state
+  const serialized = JSON.stringify(draftFilters)
+  const activeSerialized = JSON.stringify(activeFilters)
+  const hasChanges = serialized !== activeSerialized
+  const canApply = draftFilters.every(
+    (f) => f.column && f.op && (isNullaryOp(f.op) || String(f.value || '').length > 0)
+  )
+
+  return (
+    <div className="border-b border-border bg-muted/20 px-3 py-2">
+      <div className="flex flex-col gap-1.5">
+        {draftFilters.length === 0 && (
+          <div className="text-[11px] italic text-muted-foreground">
+            No filters yet — add one to narrow the results.
+          </div>
+        )}
+        {draftFilters.map((f, idx) => {
+          const col = columns.find((c) => c.name === f.column)
+          const ops = opsForColumn(col)
+          const inputType = inputTypeForColumn(col)
+          const showValue = !isNullaryOp(f.op)
+          const showSecondValue = f.op === 'BETWEEN'
+          return (
+            <div key={idx} className="flex items-center gap-1.5 text-xs">
+              <select
+                value={f.column}
+                onChange={(e) => {
+                  const newCol = columns.find((c) => c.name === e.target.value)
+                  const newOps = opsForColumn(newCol)
+                  updateFilter(idx, {
+                    column: e.target.value,
+                    op: newOps.includes(f.op) ? f.op : newOps[0],
+                  })
+                }}
+                className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {columns.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={f.op}
+                onChange={(e) => updateFilter(idx, { op: e.target.value })}
+                className="h-7 w-28 shrink-0 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {ops.map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+              {showValue && (
+                <input
+                  type={inputType}
+                  value={f.value ?? ''}
+                  onChange={(e) => updateFilter(idx, { value: e.target.value })}
+                  placeholder={
+                    f.op === 'LIKE' || f.op === 'ILIKE' ? 'e.g. %smith%' : 'value'
+                  }
+                  className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              )}
+              {showSecondValue && (
+                <input
+                  type={inputType}
+                  value={f.value2 ?? ''}
+                  onChange={(e) => updateFilter(idx, { value2: e.target.value })}
+                  placeholder="and"
+                  className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              )}
+              <button
+                onClick={() => removeFilter(idx)}
+                className="rounded p-1 text-muted-foreground hover:text-destructive"
+                title="Remove filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-2 flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={addFilter}
+          className="h-7 text-[11px]"
+          disabled={columns.length === 0}
+        >
+          <Plus className="h-3 w-3" />
+          Add filter
+        </Button>
+        <div className="flex-1" />
+        {activeFilters.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => applyFilters([])}
+            className="h-7 text-[11px]"
+            title="Clear all active filters"
+          >
+            Clear
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="lab"
+          onClick={() => applyFilters(draftFilters)}
+          disabled={!hasChanges || !canApply}
+          className="h-7 text-[11px]"
+        >
+          Apply
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function renderValue(v) {
   if (v === null || v === undefined) {
     return <span className="italic text-muted-foreground/60">NULL</span>
@@ -224,6 +389,7 @@ export function TableBrowser() {
     page,
     pageSize,
     orderBy,
+    filters,
     loading,
     error,
     duration,
@@ -231,6 +397,7 @@ export function TableBrowser() {
     setPage,
     setPageSize,
     toggleSort,
+    applyFilters,
     refresh,
   } = useTableBrowser(activeTable?.schema, activeTable?.name)
 
@@ -240,8 +407,15 @@ export function TableBrowser() {
   const [deleting, setDeleting] = useState(false)
   const [editing, setEditing] = useState(null) // { rowIdx, colName, draft, isNull, original }
   const [savingEdit, setSavingEdit] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [draftFilters, setDraftFilters] = useState([])
   const selectAllRef = useRef(null)
   const editInputRef = useRef(null)
+
+  // Sync draft with applied filters when they change externally (schema switch resets to [])
+  useEffect(() => {
+    setDraftFilters(filters)
+  }, [filters])
 
   const pkColumns = columns.filter((c) => c.is_primary_key)
   const hasPK = pkColumns.length > 0
@@ -266,7 +440,7 @@ export function TableBrowser() {
 
   useEffect(() => {
     setSelected(new Map())
-  }, [activeTable?.schema, activeTable?.name])
+  }, [activeTable?.schema, activeTable?.name, filters])
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -484,7 +658,7 @@ export function TableBrowser() {
 
   useEffect(() => {
     setEditing(null)
-  }, [activeTable?.schema, activeTable?.name, page, pageSize, orderBy])
+  }, [activeTable?.schema, activeTable?.name, page, pageSize, orderBy, filters])
 
   useEffect(() => {
     if (editing && editInputRef.current) {
@@ -549,6 +723,20 @@ export function TableBrowser() {
           </Button>
           <Button
             size="sm"
+            variant={showFilters || filters.length > 0 ? 'secondary' : 'ghost'}
+            onClick={() => setShowFilters((s) => !s)}
+            title="Filter rows"
+          >
+            <FilterIcon className="h-3.5 w-3.5" />
+            Filter
+            {filters.length > 0 && (
+              <span className="ml-1 rounded bg-lab-blue/20 px-1 text-[10px] font-semibold text-lab-blue">
+                {filters.length}
+              </span>
+            )}
+          </Button>
+          <Button
+            size="sm"
             variant="ghost"
             onClick={() => openEditTableDialog(activeTable.schema, activeTable.name)}
             title="Edit table schema"
@@ -579,6 +767,16 @@ export function TableBrowser() {
           </Button>
         </div>
       </div>
+
+      {showFilters && (
+        <FilterPanel
+          columns={columns}
+          draftFilters={draftFilters}
+          setDraftFilters={setDraftFilters}
+          applyFilters={applyFilters}
+          activeFilters={filters}
+        />
+      )}
 
       {selected.size > 0 && (
         <div className="flex h-9 items-center justify-between border-b border-lab-blue/30 bg-lab-blue/10 px-3 text-xs">

@@ -98,6 +98,7 @@ export function useTableBrowser(schema, name) {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(100)
   const [orderBy, setOrderBy] = useState(null)
+  const [filters, setFilters] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [duration, setDuration] = useState(null)
@@ -115,12 +116,17 @@ export function useTableBrowser(schema, name) {
   const loadRowCount = useCallback(async () => {
     if (!activeConnection || !schema || !name) return
     try {
-      const count = await window.gamalab.db.countRows(activeConnection.id, schema, name)
+      const count = await window.gamalab.db.countRows(
+        activeConnection.id,
+        schema,
+        name,
+        filters
+      )
       setRowCount(count)
     } catch (err) {
       setRowCount(null)
     }
-  }, [activeConnection, schema, name])
+  }, [activeConnection, schema, name, filters])
 
   const loadData = useCallback(async () => {
     if (!activeConnection || !schema || !name) return
@@ -131,6 +137,7 @@ export function useTableBrowser(schema, name) {
         limit: pageSize,
         offset: page * pageSize,
         orderBy,
+        filters,
       })
       setRows(result.rows)
       setDuration(result.duration)
@@ -140,14 +147,18 @@ export function useTableBrowser(schema, name) {
     } finally {
       setLoading(false)
     }
-  }, [activeConnection, schema, name, page, pageSize, orderBy])
+  }, [activeConnection, schema, name, page, pageSize, orderBy, filters])
 
   useEffect(() => {
     setPage(0)
     setOrderBy(null)
+    setFilters([])
     loadColumns()
+  }, [schema, name, loadColumns])
+
+  useEffect(() => {
     loadRowCount()
-  }, [loadColumns, loadRowCount])
+  }, [loadRowCount])
 
   useEffect(() => {
     loadData()
@@ -170,6 +181,11 @@ export function useTableBrowser(schema, name) {
     setPage(0)
   }, [])
 
+  const applyFilters = useCallback((next) => {
+    setFilters(next)
+    setPage(0)
+  }, [])
+
   return {
     columns,
     rows,
@@ -177,6 +193,7 @@ export function useTableBrowser(schema, name) {
     page,
     pageSize,
     orderBy,
+    filters,
     loading,
     error,
     duration,
@@ -184,6 +201,7 @@ export function useTableBrowser(schema, name) {
     setPage,
     setPageSize,
     toggleSort,
+    applyFilters,
     refresh,
   }
 }

@@ -224,13 +224,14 @@ class DbService {
     return rows
   }
 
-  async countTableRows(id, schema, table) {
+  async countTableRows(id, schema, table, filters = []) {
     const pool = this.pools.get(id)
     if (!pool) throw new Error('No active connection')
     this._validateIdent(schema)
     this._validateIdent(table)
-    const sql = `SELECT COUNT(*)::bigint AS count FROM ${this._qi(schema)}.${this._qi(table)}`
-    const { rows } = await pool.query(sql)
+    const { whereClause, params } = this._buildWhere(filters)
+    const sql = `SELECT COUNT(*)::bigint AS count FROM ${this._qi(schema)}.${this._qi(table)}${whereClause}`
+    const { rows } = await pool.query(sql, params)
     return Number(rows[0].count)
   }
 
@@ -243,6 +244,8 @@ class DbService {
     const limit = Math.min(Math.max(Number(options.limit) || 100, 1), 1000)
     const offset = Math.max(Number(options.offset) || 0, 0)
 
+    const { whereClause, params } = this._buildWhere(options.filters || [])
+
     let orderClause = ''
     if (options.orderBy && typeof options.orderBy.column === 'string') {
       this._validateIdent(options.orderBy.column)
@@ -250,11 +253,11 @@ class DbService {
       orderClause = ` ORDER BY ${this._qi(options.orderBy.column)} ${dir}`
     }
 
-    const sql = `SELECT * FROM ${this._qi(schema)}.${this._qi(table)}${orderClause} LIMIT ${limit} OFFSET ${offset}`
+    const sql = `SELECT * FROM ${this._qi(schema)}.${this._qi(table)}${whereClause}${orderClause} LIMIT ${limit} OFFSET ${offset}`
 
     const start = Date.now()
     try {
-      const result = await pool.query(sql)
+      const result = await pool.query(sql, params)
       return {
         rows: result.rows,
         fields: result.fields.map((f) => ({ name: f.name, dataTypeID: f.dataTypeID })),
@@ -264,6 +267,46 @@ class DbService {
       }
     } catch (err) {
       throw new Error(this._friendlyError(err))
+    }
+  }
+
+  _buildWhere(filters) {
+    if (!Array.isArray(filters) || filters.length === 0) {
+      return { whereClause: '', params: [] }
+    }
+    const ALLOWED_OPS = new Set([
+      '=', '!=', '<', '<=', '>', '>=',
+      'LIKE', 'ILIKE', 'NOT LIKE', 'NOT ILIKE',
+      'IS NULL', 'IS NOT NULL',
+      'IS TRUE', 'IS FALSE',
+      'BETWEEN',
+    ])
+    const clauses = []
+    const params = []
+    for (const f of filters) {
+      if (!f || typeof f !== 'object') continue
+      if (typeof f.column !== 'string') continue
+      this._validateIdent(f.column)
+      const op = String(f.op || '').toUpperCase()
+      if (!ALLOWED_OPS.has(op)) continue
+      const col = this._qi(f.column)
+
+      if (op === 'IS NULL' || op === 'IS NOT NULL' || op === 'IS TRUE' || op === 'IS FALSE') {
+        clauses.push(`${col} ${op}`)
+      } else if (op === 'BETWEEN') {
+        params.push(f.value)
+        const p1 = `$${params.length}`
+        params.push(f.value2)
+        const p2 = `$${params.length}`
+        clauses.push(`${col} BETWEEN ${p1} AND ${p2}`)
+      } else {
+        params.push(f.value)
+        clauses.push(`${col} ${op} $${params.length}`)
+      }
+    }
+    return {
+      whereClause: clauses.length ? ' WHERE ' + clauses.join(' AND ') : '',
+      params,
     }
   }
 
