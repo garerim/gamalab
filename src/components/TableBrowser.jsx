@@ -1,0 +1,645 @@
+import { useEffect, useRef, useState } from 'react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  RefreshCw,
+  Code2,
+  Copy,
+  Key,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Loader2,
+  AlertTriangle,
+  Plus,
+  Trash2,
+  X,
+  Pencil,
+  Table as TableIcon,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { cn, formatDuration } from '@/lib/utils'
+import { useAppStore } from '@/store/appStore'
+import { useTableBrowser } from '@/hooks/useTables'
+import { useDatabase } from '@/hooks/useDatabase'
+import { InsertRowDialog } from '@/components/InsertRowDialog'
+
+const PAGE_SIZES = [25, 50, 100, 250, 500]
+
+function quoteIdent(name) {
+  return '"' + String(name).replace(/"/g, '""') + '"'
+}
+
+function renderValue(v) {
+  if (v === null || v === undefined) {
+    return <span className="italic text-muted-foreground/60">NULL</span>
+  }
+  if (typeof v === 'boolean') {
+    return <span className={v ? 'text-lab-green' : 'text-lab-orange'}>{v ? 'true' : 'false'}</span>
+  }
+  if (typeof v === 'number') {
+    return <span className="text-lab-blue">{v}</span>
+  }
+  if (v instanceof Date) return v.toISOString()
+  if (typeof v === 'object') {
+    return <span className="text-lab-orange">{JSON.stringify(v)}</span>
+  }
+  return String(v)
+}
+
+function shortType(col) {
+  const udt = col.udt_name
+  const typeMap = {
+    int4: 'int',
+    int8: 'bigint',
+    int2: 'smallint',
+    float4: 'real',
+    float8: 'double',
+    bool: 'boolean',
+    varchar: 'varchar',
+    bpchar: 'char',
+    timestamptz: 'timestamp',
+    timestamp: 'timestamp',
+    numeric: 'numeric',
+  }
+  const base = typeMap[udt] || udt || col.type
+  if (col.max_length && ['varchar', 'char', 'bpchar'].includes(udt)) {
+    return `${base}(${col.max_length})`
+  }
+  return base
+}
+
+export function TableBrowser() {
+  const {
+    activeTable,
+    setActiveTable,
+    setViewMode,
+    showToast,
+    setCurrentQuery,
+    setInsertRowDialogOpen,
+    openEditTableDialog,
+    bumpTablesRefresh,
+  } = useAppStore()
+  const { activeConnection } = useDatabase()
+  const {
+    columns,
+    rows,
+    rowCount,
+    page,
+    pageSize,
+    orderBy,
+    loading,
+    error,
+    duration,
+    totalPages,
+    setPage,
+    setPageSize,
+    toggleSort,
+    refresh,
+  } = useTableBrowser(activeTable?.schema, activeTable?.name)
+
+  const [selectedRow, setSelectedRow] = useState(null)
+  const [selectedCell, setSelectedCell] = useState(null)
+  const [selected, setSelected] = useState(() => new Map())
+  const [deleting, setDeleting] = useState(false)
+  const selectAllRef = useRef(null)
+
+  const pkColumns = columns.filter((c) => c.is_primary_key)
+  const hasPK = pkColumns.length > 0
+
+  const rowKey = (row) => {
+    if (!hasPK) return null
+    const parts = pkColumns.map((c) => row[c.name])
+    if (parts.some((v) => v === null || v === undefined)) return null
+    return JSON.stringify(parts)
+  }
+
+  const allOnPageSelected =
+    hasPK && rows.length > 0 && rows.every((r) => {
+      const k = rowKey(r)
+      return k != null && selected.has(k)
+    })
+  const someOnPageSelected =
+    hasPK && rows.some((r) => {
+      const k = rowKey(r)
+      return k != null && selected.has(k)
+    })
+
+  useEffect(() => {
+    setSelected(new Map())
+  }, [activeTable?.schema, activeTable?.name])
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = !allOnPageSelected && someOnPageSelected
+    }
+  }, [allOnPageSelected, someOnPageSelected])
+
+  const toggleRow = (row) => {
+    const key = rowKey(row)
+    if (key == null) return
+    setSelected((prev) => {
+      const next = new Map(prev)
+      if (next.has(key)) next.delete(key)
+      else next.set(key, row)
+      return next
+    })
+  }
+
+  const toggleAllOnPage = () => {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      if (allOnPageSelected) {
+        for (const r of rows) {
+          const k = rowKey(r)
+          if (k != null) next.delete(k)
+        }
+      } else {
+        for (const r of rows) {
+          const k = rowKey(r)
+          if (k != null) next.set(k, r)
+        }
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelected(new Map())
+
+  const handleDeleteSelected = async () => {
+    if (selected.size === 0 || !hasPK || !activeConnection || !activeTable) return
+    const ok = await window.gamalab.dialog.confirm({
+      title: `Delete ${selected.size} row${selected.size === 1 ? '' : 's'}?`,
+      message: `Permanently delete from ${activeTable.schema}.${activeTable.name}?`,
+      detail: 'This cannot be undone.',
+    })
+    if (!ok) return
+
+    const qualifiedTable = `${quoteIdent(activeTable.schema)}.${quoteIdent(activeTable.name)}`
+    const params = []
+    let sql
+
+    if (pkColumns.length === 1) {
+      const pk = pkColumns[0]
+      const placeholders = []
+      for (const row of selected.values()) {
+        params.push(row[pk.name])
+        placeholders.push(`$${params.length}`)
+      }
+      sql = `DELETE FROM ${qualifiedTable} WHERE ${quoteIdent(pk.name)} IN (${placeholders.join(', ')})`
+    } else {
+      const tuples = []
+      for (const row of selected.values()) {
+        const ph = pkColumns.map((c) => {
+          params.push(row[c.name])
+          return `$${params.length}`
+        })
+        tuples.push(`(${ph.join(', ')})`)
+      }
+      const cols = pkColumns.map((c) => quoteIdent(c.name)).join(', ')
+      sql = `DELETE FROM ${qualifiedTable} WHERE (${cols}) IN (${tuples.join(', ')})`
+    }
+
+    setDeleting(true)
+    try {
+      const result = await window.gamalab.db.query(activeConnection.id, sql, params)
+      const affected = result?.rowCount ?? selected.size
+      showToast(`Deleted ${affected} row${affected === 1 ? '' : 's'}`, 'success')
+      clearSelection()
+      refresh()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (!activeTable) return null
+
+  const copyCell = async (value) => {
+    const text = value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value)
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast('Cell copied', 'info')
+    } catch {
+      showToast('Copy failed', 'error')
+    }
+  }
+
+  const copyRow = async (row) => {
+    const text = columns.map((c) => {
+      const v = row[c.name]
+      return v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)
+    }).join('\t')
+    try {
+      await navigator.clipboard.writeText(text)
+      showToast('Row copied', 'info')
+    } catch {
+      showToast('Copy failed', 'error')
+    }
+  }
+
+  const goToSql = () => {
+    const order = orderBy ? ` ORDER BY "${orderBy.column}" ${orderBy.direction.toUpperCase()}` : ''
+    const sql = `SELECT * FROM "${activeTable.schema}"."${activeTable.name}"${order} LIMIT ${pageSize} OFFSET ${page * pageSize};`
+    setCurrentQuery(sql)
+    setActiveTable(null)
+  }
+
+  const goBack = () => {
+    setActiveTable(null)
+  }
+
+  const handleDropTable = async () => {
+    if (!activeConnection || !activeTable) return
+    const ok = await window.gamalab.dialog.confirm({
+      title: `Drop table "${activeTable.name}"?`,
+      message: `Permanently delete ${activeTable.schema}.${activeTable.name} and all its data?`,
+      detail: 'This cannot be undone.',
+    })
+    if (!ok) return
+    const sql = `DROP TABLE ${quoteIdent(activeTable.schema)}.${quoteIdent(activeTable.name)}`
+    try {
+      await window.gamalab.db.query(activeConnection.id, sql)
+      showToast(`Table "${activeTable.name}" dropped`, 'success')
+      setActiveTable(null)
+      bumpTablesRefresh()
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const startRow = page * pageSize + 1
+  const endRow = Math.min((page + 1) * pageSize, rowCount ?? (page + 1) * pageSize)
+
+  return (
+    <div className="flex h-full w-full flex-col bg-background">
+      <div className="flex h-11 items-center justify-between border-b border-border bg-card px-3">
+        <div className="flex items-center gap-2 text-sm">
+          <TableIcon className="h-4 w-4 text-lab-blue" />
+          <span className="text-xs text-muted-foreground">{activeTable.schema}</span>
+          <span className="text-muted-foreground/60">.</span>
+          <span className="font-semibold">{activeTable.name}</span>
+          {rowCount != null && (
+            <Badge variant="info" className="ml-2 font-mono">
+              {rowCount.toLocaleString()} rows
+            </Badge>
+          )}
+          {typeof duration === 'number' && (
+            <span className="text-[10px] text-muted-foreground">
+              · {formatDuration(duration)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="lab"
+            onClick={() => setInsertRowDialogOpen(true)}
+            disabled={columns.length === 0}
+            title="Insert a new row"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Insert
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => openEditTableDialog(activeTable.schema, activeTable.name)}
+            title="Edit table schema"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </Button>
+          <Button size="sm" variant="ghost" onClick={refresh} disabled={loading}>
+            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+            Refresh
+          </Button>
+          <Button size="sm" variant="ghost" onClick={goToSql} title="Open as SQL">
+            <Code2 className="h-3.5 w-3.5" />
+            SQL
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleDropTable}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            title="Drop table"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Drop
+          </Button>
+          <Button size="sm" variant="ghost" onClick={goBack}>
+            Back
+          </Button>
+        </div>
+      </div>
+
+      {selected.size > 0 && (
+        <div className="flex h-9 items-center justify-between border-b border-lab-blue/30 bg-lab-blue/10 px-3 text-xs">
+          <div className="flex items-center gap-2 text-foreground">
+            <span className="font-semibold">{selected.size}</span>
+            <span className="text-muted-foreground">
+              row{selected.size === 1 ? '' : 's'} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearSelection}
+              disabled={deleting}
+              className="h-7 text-[11px]"
+            >
+              <X className="h-3 w-3" />
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleDeleteSelected}
+              disabled={deleting}
+              className="h-7 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {deleting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+              Delete selected
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        {error ? (
+          <div className="m-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="font-mono">{error}</span>
+          </div>
+        ) : columns.length === 0 && !loading ? (
+          <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+            Loading table schema…
+          </div>
+        ) : (
+          <table className="w-full border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-card shadow-sm">
+              <tr>
+                <th className="sticky left-0 z-20 w-8 border-b border-r border-border bg-card px-2 py-2 text-center">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={toggleAllOnPage}
+                    disabled={!hasPK || rows.length === 0}
+                    title={hasPK ? 'Select all on page' : 'Table has no primary key'}
+                    className="h-3.5 w-3.5 accent-lab-blue disabled:opacity-30"
+                  />
+                </th>
+                <th className="sticky left-8 z-20 w-10 border-b border-r border-border bg-card px-2 py-2 text-right text-[10px] font-normal text-muted-foreground">
+                  #
+                </th>
+                {columns.map((col) => {
+                  const isSorted = orderBy?.column === col.name
+                  const SortIcon =
+                    !isSorted
+                      ? ArrowUpDown
+                      : orderBy.direction === 'asc'
+                        ? ArrowUp
+                        : ArrowDown
+                  return (
+                    <th
+                      key={col.name}
+                      className={cn(
+                        'group select-none border-b border-r border-border px-3 py-2 text-left align-top',
+                        isSorted && 'bg-lab-blue/5'
+                      )}
+                    >
+                      <button
+                        onClick={() => toggleSort(col.name)}
+                        className="flex w-full items-center gap-1.5 text-left"
+                        title={`Sort by ${col.name}`}
+                      >
+                        {col.is_primary_key && (
+                          <Key className="h-3 w-3 shrink-0 text-lab-orange" />
+                        )}
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <span className="flex items-center gap-1 truncate font-semibold text-foreground">
+                            {col.name}
+                            {!col.nullable && !col.is_primary_key && (
+                              <span className="text-destructive/70" title="NOT NULL">
+                                *
+                              </span>
+                            )}
+                          </span>
+                          <span className="font-mono text-[10px] font-normal text-muted-foreground">
+                            {shortType(col)}
+                            {col.is_primary_key && (
+                              <span className="ml-1 text-lab-orange/80">PK</span>
+                            )}
+                          </span>
+                        </div>
+                        <SortIcon
+                          className={cn(
+                            'ml-auto h-3 w-3 shrink-0 transition-opacity',
+                            isSorted ? 'text-lab-blue opacity-100' : 'opacity-0 group-hover:opacity-60'
+                          )}
+                        />
+                      </button>
+                    </th>
+                  )
+                })}
+                <th className="sticky right-0 w-8 border-b border-border bg-card" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading && rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={columns.length + 3}
+                    className="py-8 text-center text-xs text-muted-foreground"
+                  >
+                    <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin text-lab-blue" />
+                    Loading rows…
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={columns.length + 3}
+                    className="py-8 text-center text-xs text-muted-foreground"
+                  >
+                    No rows
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row, i) => {
+                  const idx = page * pageSize + i
+                  const isSelected = selectedRow === idx
+                  const key = rowKey(row)
+                  const isChecked = key != null && selected.has(key)
+                  return (
+                    <tr
+                      key={idx}
+                      className={cn(
+                        'group',
+                        isChecked
+                          ? 'bg-lab-blue/15'
+                          : isSelected
+                            ? 'bg-lab-blue/10'
+                            : i % 2 === 0
+                              ? 'bg-background'
+                              : 'bg-card/30'
+                      )}
+                      onClick={() => setSelectedRow(idx)}
+                    >
+                      <td
+                        className="sticky left-0 border-b border-r border-border bg-inherit px-2 py-1 text-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleRow(row)}
+                          disabled={key == null}
+                          title={key == null ? 'No primary key' : 'Select row'}
+                          className="h-3.5 w-3.5 accent-lab-blue disabled:opacity-30"
+                        />
+                      </td>
+                      <td className="sticky left-8 border-b border-r border-border bg-inherit px-2 py-1 text-right font-mono text-[10px] text-muted-foreground">
+                        {idx + 1}
+                      </td>
+                      {columns.map((col) => {
+                        const cellId = `${idx}:${col.name}`
+                        const isCellSelected = selectedCell === cellId
+                        return (
+                          <td
+                            key={col.name}
+                            className={cn(
+                              'max-w-xs truncate border-b border-r border-border px-3 py-1 font-mono',
+                              isCellSelected && 'ring-1 ring-inset ring-lab-blue'
+                            )}
+                            title={
+                              row[col.name] === null
+                                ? 'NULL'
+                                : typeof row[col.name] === 'object'
+                                  ? JSON.stringify(row[col.name])
+                                  : String(row[col.name])
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedCell(cellId)
+                              setSelectedRow(idx)
+                            }}
+                            onDoubleClick={() => copyCell(row[col.name])}
+                          >
+                            {renderValue(row[col.name])}
+                          </td>
+                        )
+                      })}
+                      <td className="sticky right-0 w-8 border-b border-border bg-inherit px-1 py-1">
+                        <Button
+                          size="iconSm"
+                          variant="ghost"
+                          className="h-5 w-5 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            copyRow(row)
+                          }}
+                          title="Copy row"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="flex h-10 items-center justify-between border-t border-border bg-card px-3 text-xs">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          {rowCount != null && rows.length > 0 ? (
+            <span>
+              {startRow.toLocaleString()}–{endRow.toLocaleString()} of{' '}
+              {rowCount.toLocaleString()}
+            </span>
+          ) : (
+            <span>—</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            size="iconSm"
+            variant="ghost"
+            disabled={page === 0 || loading}
+            onClick={() => setPage(0)}
+          >
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            disabled={page === 0 || loading}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <span className="min-w-[70px] text-center text-[11px] tabular-nums">
+            Page {page + 1}
+            {totalPages ? ` / ${totalPages}` : ''}
+          </span>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            disabled={(totalPages != null && page >= totalPages - 1) || loading}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            disabled={totalPages == null || page >= totalPages - 1 || loading}
+            onClick={() => totalPages && setPage(totalPages - 1)}
+          >
+            <ChevronsRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span>Rows per page</span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value))
+              setPage(0)
+            }}
+            className="h-6 rounded border border-border bg-background px-1 text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {PAGE_SIZES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <InsertRowDialog
+        schema={activeTable.schema}
+        table={activeTable.name}
+        columns={columns}
+        onInserted={refresh}
+      />
+    </div>
+  )
+}
