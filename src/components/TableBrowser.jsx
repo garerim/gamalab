@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
   Pencil,
+  Check,
   Table as TableIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,138 @@ const PAGE_SIZES = [25, 50, 100, 250, 500]
 
 function quoteIdent(name) {
   return '"' + String(name).replace(/"/g, '""') + '"'
+}
+
+function isNumericType(col) {
+  return /^(int|float|numeric|real|double|smallint|bigint)/i.test(col.udt_name)
+}
+function isBooleanType(col) {
+  return col.udt_name === 'bool' || col.type === 'boolean'
+}
+function isJsonType(col) {
+  return col.udt_name === 'json' || col.udt_name === 'jsonb'
+}
+function isComputedColumn(col) {
+  return /nextval\(/i.test(col.default_value || '')
+}
+function cellToDraft(v) {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
+function CellEditor({ editing, setEditing, saving, onSave, onCancel, inputRef }) {
+  const col = editing.column
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      onSave()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      onCancel()
+    }
+  }
+  const toggleNull = () => {
+    setEditing((prev) => ({ ...prev, isNull: !prev.isNull, draft: prev.isNull ? prev.draft : '' }))
+  }
+  const setDraft = (v) =>
+    setEditing((prev) => ({ ...prev, draft: v, isNull: false }))
+
+  const commonProps = {
+    ref: inputRef,
+    onKeyDown,
+    disabled: saving || editing.isNull,
+    onBlur: (e) => {
+      // Save on blur unless focus moved to one of our control buttons
+      const next = e.relatedTarget
+      if (next && next.dataset?.cellEditorControl) return
+      onSave()
+    },
+    className:
+      'h-full w-full bg-background px-2 py-1 font-mono text-xs outline-none ring-0',
+  }
+
+  const input = editing.isNull ? (
+    <div className="flex h-full w-full items-center px-2 text-[11px] italic text-muted-foreground">
+      NULL
+    </div>
+  ) : col.udt_name === 'bool' || col.type === 'boolean' ? (
+    <select
+      {...commonProps}
+      value={editing.draft || 'false'}
+      onChange={(e) => setDraft(e.target.value)}
+    >
+      <option value="false">false</option>
+      <option value="true">true</option>
+    </select>
+  ) : col.udt_name === 'json' || col.udt_name === 'jsonb' ? (
+    <textarea
+      {...commonProps}
+      value={editing.draft}
+      onChange={(e) => setDraft(e.target.value)}
+      rows={3}
+      className="w-full resize-y bg-background p-2 font-mono text-xs outline-none"
+    />
+  ) : /^(int|float|numeric|real|double|smallint|bigint)/i.test(col.udt_name) ? (
+    <input
+      {...commonProps}
+      type="number"
+      value={editing.draft}
+      onChange={(e) => setDraft(e.target.value)}
+    />
+  ) : (
+    <input
+      {...commonProps}
+      type="text"
+      value={editing.draft}
+      onChange={(e) => setDraft(e.target.value)}
+    />
+  )
+
+  return (
+    <div className="flex h-full w-full items-center gap-0">
+      <div className="min-w-0 flex-1">{input}</div>
+      <div className="flex items-center gap-0.5 bg-background pr-1">
+        {col.nullable && (
+          <button
+            type="button"
+            data-cell-editor-control="true"
+            onClick={toggleNull}
+            disabled={saving}
+            className={cn(
+              'rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider',
+              editing.isNull
+                ? 'bg-muted-foreground/20 text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            title="Toggle NULL"
+          >
+            null
+          </button>
+        )}
+        <button
+          type="button"
+          data-cell-editor-control="true"
+          onClick={onCancel}
+          disabled={saving}
+          className="rounded p-1 text-muted-foreground hover:text-foreground"
+          title="Cancel (Esc)"
+        >
+          <X className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          data-cell-editor-control="true"
+          onClick={onSave}
+          disabled={saving}
+          className="rounded p-1 text-lab-green hover:text-lab-green"
+          title="Save (Enter)"
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function renderValue(v) {
@@ -105,7 +238,10 @@ export function TableBrowser() {
   const [selectedCell, setSelectedCell] = useState(null)
   const [selected, setSelected] = useState(() => new Map())
   const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(null) // { rowIdx, colName, draft, isNull, original }
+  const [savingEdit, setSavingEdit] = useState(false)
   const selectAllRef = useRef(null)
+  const editInputRef = useRef(null)
 
   const pkColumns = columns.filter((c) => c.is_primary_key)
   const hasPK = pkColumns.length > 0
@@ -252,6 +388,112 @@ export function TableBrowser() {
   const goBack = () => {
     setActiveTable(null)
   }
+
+  const canEditCell = (col) => {
+    if (!hasPK) return false
+    if (col.is_primary_key) return false
+    if (isComputedColumn(col)) return false
+    return true
+  }
+
+  const startEdit = (row, idx, col) => {
+    if (!canEditCell(col)) return
+    const current = row[col.name]
+    setEditing({
+      rowIdx: idx,
+      colName: col.name,
+      row,
+      column: col,
+      draft: cellToDraft(current),
+      isNull: current === null || current === undefined,
+      original: current,
+    })
+  }
+
+  const cancelEdit = () => setEditing(null)
+
+  const saveEdit = async () => {
+    if (!editing || savingEdit || !activeConnection || !activeTable) return
+    const { column: col, row, draft, isNull, original } = editing
+
+    let value
+    if (isNull) {
+      value = null
+    } else if (isBooleanType(col)) {
+      value = draft === 'true' || draft === true
+    } else if (isNumericType(col)) {
+      if (draft === '' && col.nullable) {
+        value = null
+      } else {
+        const n = Number(draft)
+        if (Number.isNaN(n)) {
+          showToast(`Invalid number for ${col.name}`, 'warning')
+          return
+        }
+        value = n
+      }
+    } else if (isJsonType(col)) {
+      if (draft === '' && col.nullable) {
+        value = null
+      } else {
+        try {
+          JSON.parse(draft)
+          value = draft
+        } catch {
+          showToast(`Invalid JSON for ${col.name}`, 'warning')
+          return
+        }
+      }
+    } else {
+      value = draft === '' && col.nullable ? null : draft
+    }
+
+    // No-op if unchanged
+    const originalDraft = cellToDraft(original)
+    const originalIsNull = original === null || original === undefined
+    if (isNull === originalIsNull && draft === originalDraft) {
+      setEditing(null)
+      return
+    }
+
+    // Build UPDATE ... WHERE <pk...>
+    const params = [value]
+    const setClause = `${quoteIdent(col.name)} = $1`
+    const whereParts = pkColumns.map((c, i) => {
+      params.push(row[c.name])
+      return `${quoteIdent(c.name)} = $${i + 2}`
+    })
+    const sql = `UPDATE ${quoteIdent(activeTable.schema)}.${quoteIdent(activeTable.name)} SET ${setClause} WHERE ${whereParts.join(' AND ')}`
+
+    setSavingEdit(true)
+    try {
+      const result = await window.gamalab.db.query(activeConnection.id, sql, params)
+      if ((result?.rowCount ?? 0) === 0) {
+        showToast('No row matched — maybe it was deleted elsewhere', 'warning')
+      } else {
+        showToast('Cell updated', 'success')
+      }
+      setEditing(null)
+      refresh()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  useEffect(() => {
+    setEditing(null)
+  }, [activeTable?.schema, activeTable?.name, page, pageSize, orderBy])
+
+  useEffect(() => {
+    if (editing && editInputRef.current) {
+      editInputRef.current.focus()
+      if (typeof editInputRef.current.select === 'function') {
+        editInputRef.current.select()
+      }
+    }
+  }, [editing?.rowIdx, editing?.colName])
 
   const handleDropTable = async () => {
     if (!activeConnection || !activeTable) return
@@ -516,28 +758,56 @@ export function TableBrowser() {
                       {columns.map((col) => {
                         const cellId = `${idx}:${col.name}`
                         const isCellSelected = selectedCell === cellId
+                        const isEditingThis =
+                          editing?.rowIdx === idx && editing?.colName === col.name
+                        const editable = canEditCell(col)
                         return (
                           <td
                             key={col.name}
                             className={cn(
                               'max-w-xs truncate border-b border-r border-border px-3 py-1 font-mono',
-                              isCellSelected && 'ring-1 ring-inset ring-lab-blue'
+                              isCellSelected && !isEditingThis && 'ring-1 ring-inset ring-lab-blue',
+                              isEditingThis && 'bg-lab-blue/10 p-0 ring-2 ring-inset ring-lab-blue'
                             )}
                             title={
-                              row[col.name] === null
-                                ? 'NULL'
-                                : typeof row[col.name] === 'object'
-                                  ? JSON.stringify(row[col.name])
-                                  : String(row[col.name])
+                              isEditingThis
+                                ? undefined
+                                : !editable
+                                  ? col.is_primary_key
+                                    ? 'Primary key — not editable'
+                                    : isComputedColumn(col)
+                                      ? 'Auto-generated — not editable'
+                                      : 'No primary key — not editable'
+                                  : row[col.name] === null
+                                    ? 'NULL (double-click to edit)'
+                                    : typeof row[col.name] === 'object'
+                                      ? JSON.stringify(row[col.name])
+                                      : String(row[col.name])
                             }
                             onClick={(e) => {
                               e.stopPropagation()
+                              if (isEditingThis) return
                               setSelectedCell(cellId)
                               setSelectedRow(idx)
                             }}
-                            onDoubleClick={() => copyCell(row[col.name])}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              if (editable) startEdit(row, idx, col)
+                              else copyCell(row[col.name])
+                            }}
                           >
-                            {renderValue(row[col.name])}
+                            {isEditingThis ? (
+                              <CellEditor
+                                editing={editing}
+                                setEditing={setEditing}
+                                saving={savingEdit}
+                                onSave={saveEdit}
+                                onCancel={cancelEdit}
+                                inputRef={editInputRef}
+                              />
+                            ) : (
+                              renderValue(row[col.name])
+                            )}
                           </td>
                         )
                       })}

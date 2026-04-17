@@ -93,6 +93,8 @@ export function CreateTableDialog() {
   ])
   const [submitting, setSubmitting] = useState(false)
   const [showSql, setShowSql] = useState(false)
+  const [draggedId, setDraggedId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
 
   useEffect(() => {
     if (createTableDialogOpen) {
@@ -117,6 +119,21 @@ export function CreateTableDialog() {
 
   const addCol = () => {
     setColumns((cols) => [...cols, newColumn()])
+  }
+
+  const moveCol = (fromId, targetId) => {
+    if (!fromId || !targetId || fromId === targetId) return
+    setColumns((cols) => {
+      const fromIdx = cols.findIndex((c) => c.id === fromId)
+      const targetIdx = cols.findIndex((c) => c.id === targetId)
+      if (fromIdx === -1 || targetIdx === -1) return cols
+      const next = [...cols]
+      const [moved] = next.splice(fromIdx, 1)
+      // Always insert before the target (matches the top-border drop indicator)
+      const newTargetIdx = next.findIndex((c) => c.id === targetId)
+      next.splice(newTargetIdx, 0, moved)
+      return next
+    })
   }
 
   const togglePrimaryKey = (id) => {
@@ -241,19 +258,58 @@ export function CreateTableDialog() {
               <div className="flex flex-col">
                 {columns.map((col) => {
                   const needsLength = ['varchar', 'char'].includes(col.type)
+                  const isDragging = draggedId === col.id
+                  const isDragOver = dragOverId === col.id && draggedId && draggedId !== col.id
                   return (
                     <div
                       key={col.id}
+                      onDragOver={(e) => {
+                        if (!draggedId) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        if (dragOverId !== col.id) setDragOverId(col.id)
+                      }}
+                      onDragLeave={(e) => {
+                        // Only clear if leaving the row, not entering a child
+                        if (!e.currentTarget.contains(e.relatedTarget)) {
+                          if (dragOverId === col.id) setDragOverId(null)
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        moveCol(draggedId, col.id)
+                        setDraggedId(null)
+                        setDragOverId(null)
+                      }}
                       className={cn(
-                        'grid grid-cols-[20px_1fr_1fr_70px_60px_60px_60px_1fr_28px] gap-1 border-b border-border px-2 py-1.5 text-xs last:border-b-0',
-                        col.primaryKey && 'bg-lab-orange/5'
+                        'grid grid-cols-[20px_1fr_1fr_70px_60px_60px_60px_1fr_28px] gap-1 border-b border-border px-2 py-1.5 text-xs last:border-b-0 transition-colors',
+                        col.primaryKey && 'bg-lab-orange/5',
+                        isDragging && 'opacity-40',
+                        isDragOver && 'border-t-2 border-t-lab-blue'
                       )}
                     >
-                      <div className="flex items-center justify-center text-muted-foreground">
+                      <div
+                        draggable={!submitting}
+                        onDragStart={(e) => {
+                          setDraggedId(col.id)
+                          e.dataTransfer.effectAllowed = 'move'
+                          // Some browsers require data to be set to initiate drag
+                          e.dataTransfer.setData('text/plain', col.id)
+                        }}
+                        onDragEnd={() => {
+                          setDraggedId(null)
+                          setDragOverId(null)
+                        }}
+                        className={cn(
+                          'flex items-center justify-center text-muted-foreground',
+                          !submitting && 'cursor-grab active:cursor-grabbing'
+                        )}
+                        title="Drag to reorder"
+                      >
                         {col.primaryKey ? (
                           <Key className="h-3 w-3 text-lab-orange" />
                         ) : (
-                          <GripVertical className="h-3 w-3 opacity-40" />
+                          <GripVertical className="h-3 w-3 opacity-40 hover:opacity-100" />
                         )}
                       </div>
                       <Input
