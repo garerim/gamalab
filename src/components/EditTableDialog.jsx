@@ -7,6 +7,7 @@ import {
   Loader2,
   Code2,
   Undo2,
+  Link2,
 } from 'lucide-react'
 import {
   Dialog,
@@ -34,6 +35,8 @@ const PG_TYPES = [
   { group: 'UUID', types: ['uuid'] },
   { group: 'Binary', types: ['bytea'] },
 ]
+
+const FK_ACTIONS = ['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']
 
 function quoteIdent(name) {
   return '"' + String(name).replace(/"/g, '""') + '"'
@@ -72,10 +75,18 @@ function normalizeExisting(col) {
   }
 }
 
-function buildAlterStatements(schema, oldName, newName, columns) {
+function buildAlterStatements(schema, oldName, newName, columns, foreignKeys) {
   const statements = []
   const qSchema = quoteIdent(schema)
   const qOld = `${qSchema}.${quoteIdent(oldName)}`
+
+  // 0. Drop existing FKs marked for removal (do this before column drops,
+  //    and always using the ORIGINAL table name since rename is last)
+  for (const fk of foreignKeys || []) {
+    if (!fk.isNew && fk.dropped && fk.constraintName) {
+      statements.push(`ALTER TABLE ${qOld} DROP CONSTRAINT ${quoteIdent(fk.constraintName)}`)
+    }
+  }
 
   // 1. Column renames (use original name for now)
   for (const c of columns) {
@@ -128,7 +139,23 @@ function buildAlterStatements(schema, oldName, newName, columns) {
     statements.push(`ALTER TABLE ${qOld} ADD COLUMN ${parts.join(' ')}`)
   }
 
-  // 5. Rename table last
+  // 5. Add new FKs (before table rename so we can use the original name)
+  for (const fk of foreignKeys || []) {
+    if (!fk.isNew || fk.dropped) continue
+    if (!fk.sourceColumn || !fk.targetSchema || !fk.targetTable || !fk.targetColumn) continue
+    const constraintName = `${oldName}_${fk.sourceColumn}_fkey`
+    const tail = []
+    if (fk.onDelete && fk.onDelete !== 'NO ACTION') tail.push(`ON DELETE ${fk.onDelete}`)
+    if (fk.onUpdate && fk.onUpdate !== 'NO ACTION') tail.push(`ON UPDATE ${fk.onUpdate}`)
+    statements.push(
+      `ALTER TABLE ${qOld} ADD CONSTRAINT ${quoteIdent(constraintName)}` +
+        ` FOREIGN KEY (${quoteIdent(fk.sourceColumn)})` +
+        ` REFERENCES ${quoteIdent(fk.targetSchema)}.${quoteIdent(fk.targetTable)} (${quoteIdent(fk.targetColumn)})` +
+        (tail.length ? ' ' + tail.join(' ') : '')
+    )
+  }
+
+  // 6. Rename table last
   if (newName && newName !== oldName) {
     statements.push(`ALTER TABLE ${qOld} RENAME TO ${quoteIdent(newName)}`)
   }
@@ -150,6 +177,9 @@ export function EditTableDialog() {
 
   const [tableName, setTableName] = useState('')
   const [columns, setColumns] = useState([])
+  const [foreignKeys, setForeignKeys] = useState([])
+  const [allDbTables, setAllDbTables] = useState([])
+  const [targetColsCache, setTargetColsCache] = useState({})
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [showSql, setShowSql] = useState(false)
@@ -160,15 +190,36 @@ export function EditTableDialog() {
     setLoading(true)
     setTableName(editTableTarget.name)
     setShowSql(false)
+    setTargetColsCache({})
     ;(async () => {
       try {
-        const cols = await window.gamalab.db.listColumns(
-          activeConnection.id,
-          editTableTarget.schema,
-          editTableTarget.name
-        )
+        const [cols, tables] = await Promise.all([
+          window.gamalab.db.listColumns(
+            activeConnection.id,
+            editTableTarget.schema,
+            editTableTarget.name
+          ),
+          window.gamalab.db.listAllTables(activeConnection.id),
+        ])
         if (cancelled) return
         setColumns(cols.map(normalizeExisting))
+        setAllDbTables(tables.filter((t) => t.type !== 'VIEW'))
+        // Extract FKs from columns
+        const fks = cols
+          .filter((c) => c.foreign_table)
+          .map((c) => ({
+            id: `existing-fk-${c.fk_constraint_name}`,
+            isNew: false,
+            constraintName: c.fk_constraint_name,
+            sourceColumn: c.name,
+            targetSchema: c.foreign_schema,
+            targetTable: c.foreign_table,
+            targetColumn: c.foreign_column,
+            onDelete: 'NO ACTION',
+            onUpdate: 'NO ACTION',
+            dropped: false,
+          }))
+        setForeignKeys(fks)
       } catch (err) {
         if (!cancelled) showToast(err.message, 'error')
       } finally {
@@ -179,6 +230,47 @@ export function EditTableDialog() {
       cancelled = true
     }
   }, [editTableDialogOpen, editTableTarget, activeConnection, showToast])
+
+  const loadTargetColumns = async (targetSchema, targetTable) => {
+    if (!activeConnection || !targetSchema || !targetTable) return
+    const key = `${targetSchema}.${targetTable}`
+    if (targetColsCache[key]) return
+    try {
+      const cols = await window.gamalab.db.listColumns(
+        activeConnection.id,
+        targetSchema,
+        targetTable
+      )
+      setTargetColsCache((c) => ({ ...c, [key]: cols }))
+    } catch {
+      setTargetColsCache((c) => ({ ...c, [key]: [] }))
+    }
+  }
+
+  const addFk = () =>
+    setForeignKeys((fks) => [
+      ...fks,
+      {
+        id: `new-fk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        isNew: true,
+        constraintName: null,
+        sourceColumn: '',
+        targetSchema: '',
+        targetTable: '',
+        targetColumn: '',
+        onDelete: 'NO ACTION',
+        onUpdate: 'NO ACTION',
+        dropped: false,
+      },
+    ])
+  const updateFk = (id, patch) =>
+    setForeignKeys((fks) => fks.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+  const toggleDropFk = (id) =>
+    setForeignKeys((fks) =>
+      fks
+        .map((f) => (f.id === id ? { ...f, dropped: !f.dropped } : f))
+        .filter((f) => !(f.isNew && f.dropped))
+    )
 
   const updateCol = (id, patch) => {
     setColumns((cols) => cols.map((c) => (c.id === id ? { ...c, ...patch } : c)))
@@ -203,9 +295,10 @@ export function EditTableDialog() {
       editTableTarget.schema,
       editTableTarget.name,
       tableName.trim(),
-      columns
+      columns,
+      foreignKeys
     )
-  }, [editTableTarget, tableName, columns])
+  }, [editTableTarget, tableName, columns, foreignKeys])
 
   const sql = statements.map((s) => s + ';').join('\n')
 
@@ -237,9 +330,8 @@ export function EditTableDialog() {
 
     setSubmitting(true)
     try {
-      for (const stmt of statements) {
-        await window.gamalab.db.query(activeConnection.id, stmt)
-      }
+      // All ALTERs in a single transaction so partial failures roll back
+      await window.gamalab.db.transaction(activeConnection.id, statements)
       showToast('Table updated', 'success')
       bumpTablesRefresh()
       // Re-point activeTable if it was the one we just renamed
@@ -429,6 +521,198 @@ export function EditTableDialog() {
                   Add column
                 </Button>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+                  <Link2 className="h-3 w-3" />
+                  Foreign keys ({foreignKeys.filter((f) => !f.dropped).length})
+                </Label>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={addFk}
+                  disabled={submitting || allDbTables.length === 0}
+                  className="h-7 px-2 text-[11px]"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add FK
+                </Button>
+              </div>
+
+              {foreignKeys.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-2">
+                  {foreignKeys.map((fk) => {
+                    const targetKey = `${fk.targetSchema}.${fk.targetTable}`
+                    const targetCols = targetColsCache[targetKey] || []
+                    const schemas = Array.from(
+                      new Set(allDbTables.map((t) => t.schema))
+                    ).sort()
+                    const tablesForSchema = allDbTables.filter(
+                      (t) => t.schema === fk.targetSchema
+                    )
+                    const readOnly = !fk.isNew
+                    return (
+                      <div
+                        key={fk.id}
+                        className={cn(
+                          'flex flex-col gap-1.5 rounded border border-border bg-background p-2 text-xs',
+                          fk.dropped && 'bg-destructive/10 opacity-60 line-through',
+                          fk.isNew && !fk.dropped && 'border-lab-green/40 bg-lab-green/5'
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {readOnly ? (
+                            <div className="flex min-w-0 flex-1 items-center gap-1 font-mono text-[11px]">
+                              <span className="truncate text-muted-foreground">
+                                {fk.constraintName}
+                              </span>
+                              <span className="mx-1 text-muted-foreground/60">·</span>
+                              <span className="truncate">
+                                {fk.sourceColumn}
+                              </span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="truncate">
+                                {fk.targetSchema}.{fk.targetTable}.{fk.targetColumn}
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-muted-foreground">From</span>
+                              <select
+                                value={fk.sourceColumn}
+                                onChange={(e) =>
+                                  updateFk(fk.id, { sourceColumn: e.target.value })
+                                }
+                                disabled={submitting}
+                                className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                <option value="">(select column)</option>
+                                {columns
+                                  .filter((c) => !c.dropped && c.name.trim())
+                                  .map((c) => (
+                                    <option key={c.id} value={c.name}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                              </select>
+                              <span className="text-muted-foreground">→</span>
+                              <select
+                                value={fk.targetSchema}
+                                onChange={(e) =>
+                                  updateFk(fk.id, {
+                                    targetSchema: e.target.value,
+                                    targetTable: '',
+                                    targetColumn: '',
+                                  })
+                                }
+                                disabled={submitting}
+                                className="h-7 w-24 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                <option value="">schema</option>
+                                {schemas.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={fk.targetTable}
+                                onChange={(e) => {
+                                  updateFk(fk.id, {
+                                    targetTable: e.target.value,
+                                    targetColumn: '',
+                                  })
+                                  if (e.target.value)
+                                    loadTargetColumns(fk.targetSchema, e.target.value)
+                                }}
+                                disabled={submitting || !fk.targetSchema}
+                                className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                <option value="">table</option>
+                                {tablesForSchema.map((t) => (
+                                  <option key={t.name} value={t.name}>
+                                    {t.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={fk.targetColumn}
+                                onChange={(e) =>
+                                  updateFk(fk.id, { targetColumn: e.target.value })
+                                }
+                                disabled={submitting || !fk.targetTable}
+                                className="h-7 w-28 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              >
+                                <option value="">column</option>
+                                {targetCols.map((c) => (
+                                  <option key={c.name} value={c.name}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </>
+                          )}
+                          <Button
+                            size="iconSm"
+                            variant="ghost"
+                            onClick={() => toggleDropFk(fk.id)}
+                            disabled={submitting}
+                            className={cn(
+                              'h-7 w-7',
+                              fk.dropped
+                                ? 'text-lab-blue hover:text-lab-blue'
+                                : 'text-destructive hover:text-destructive'
+                            )}
+                            title={fk.dropped ? 'Undo drop' : 'Drop FK'}
+                          >
+                            {fk.dropped ? (
+                              <Undo2 className="h-3 w-3" />
+                            ) : (
+                              <Trash2 className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                        {fk.isNew && !fk.dropped && (
+                          <div className="flex items-center gap-1.5 pl-1 text-[10px] text-muted-foreground">
+                            <span className="uppercase tracking-wider">On delete</span>
+                            <select
+                              value={fk.onDelete}
+                              onChange={(e) =>
+                                updateFk(fk.id, { onDelete: e.target.value })
+                              }
+                              disabled={submitting}
+                              className="h-6 rounded border border-input bg-background px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              {FK_ACTIONS.map((a) => (
+                                <option key={a} value={a}>
+                                  {a}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="ml-3 uppercase tracking-wider">On update</span>
+                            <select
+                              value={fk.onUpdate}
+                              onChange={(e) =>
+                                updateFk(fk.id, { onUpdate: e.target.value })
+                              }
+                              disabled={submitting}
+                              className="h-6 rounded border border-input bg-background px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              {FK_ACTIONS.map((a) => (
+                                <option key={a} value={a}>
+                                  {a}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {showSql && (

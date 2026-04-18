@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
+const fs = require('fs/promises')
 const Store = require('electron-store')
 const DockerService = require('./services/docker.service')
 const DbService = require('./services/db.service')
@@ -123,6 +124,30 @@ ipcMain.handle('db:disconnect', async (_evt, id) => {
 
 ipcMain.handle('db:query', async (_evt, id, sql, params) => {
   return await dbService.query(id, sql, params)
+})
+
+ipcMain.handle('db:transaction', async (_evt, id, statements) => {
+  return await dbService.runTransaction(id, statements)
+})
+
+ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {
+  return await dbService.exportRows(id, schema, table, options)
+})
+
+ipcMain.handle('dialog:save-export', async (_evt, { defaultPath, content, format }) => {
+  const filters = {
+    csv: [{ name: 'CSV', extensions: ['csv'] }],
+    json: [{ name: 'JSON', extensions: ['json'] }],
+    sql: [{ name: 'SQL', extensions: ['sql'] }],
+  }[format] || [{ name: 'All Files', extensions: ['*'] }]
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultPath || 'export',
+    filters,
+  })
+  if (result.canceled || !result.filePath) return { canceled: true }
+  await fs.writeFile(result.filePath, content, 'utf-8')
+  return { canceled: false, filePath: result.filePath }
 })
 
 ipcMain.handle('db:list-databases', async (_evt, id) => {

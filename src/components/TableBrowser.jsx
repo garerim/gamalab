@@ -19,6 +19,8 @@ import {
   Pencil,
   Check,
   Filter as FilterIcon,
+  Link2,
+  Download,
   Table as TableIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -28,6 +30,7 @@ import { useAppStore } from '@/store/appStore'
 import { useTableBrowser } from '@/hooks/useTables'
 import { useDatabase } from '@/hooks/useDatabase'
 import { InsertRowDialog } from '@/components/InsertRowDialog'
+import { formatExport } from '@/lib/exportFormatters'
 
 const PAGE_SIZES = [25, 50, 100, 250, 500]
 
@@ -380,6 +383,9 @@ export function TableBrowser() {
     setInsertRowDialogOpen,
     openEditTableDialog,
     bumpTablesRefresh,
+    pendingTableFilters,
+    consumePendingFilters,
+    navigateToTableWithFilter,
   } = useAppStore()
   const { activeConnection } = useDatabase()
   const {
@@ -409,6 +415,9 @@ export function TableBrowser() {
   const [savingEdit, setSavingEdit] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [draftFilters, setDraftFilters] = useState([])
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportMenuRef = useRef(null)
   const selectAllRef = useRef(null)
   const editInputRef = useRef(null)
 
@@ -416,6 +425,19 @@ export function TableBrowser() {
   useEffect(() => {
     setDraftFilters(filters)
   }, [filters])
+
+  // Consume pending filters set by FK navigation once activeTable matches
+  useEffect(() => {
+    if (!pendingTableFilters || !activeTable) return
+    if (
+      pendingTableFilters.schema === activeTable.schema &&
+      pendingTableFilters.name === activeTable.name
+    ) {
+      applyFilters(pendingTableFilters.filters)
+      setShowFilters(true)
+      consumePendingFilters()
+    }
+  }, [pendingTableFilters, activeTable, applyFilters, consumePendingFilters])
 
   const pkColumns = columns.filter((c) => c.is_primary_key)
   const hasPK = pkColumns.length > 0
@@ -669,6 +691,57 @@ export function TableBrowser() {
     }
   }, [editing?.rowIdx, editing?.colName])
 
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    const handler = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [exportMenuOpen])
+
+  const handleExport = async (format, scope) => {
+    if (!activeConnection || !activeTable) return
+    setExportMenuOpen(false)
+    setExporting(true)
+    try {
+      let exportRows
+      if (scope === 'page') {
+        exportRows = rows
+      } else {
+        const result = await window.gamalab.db.exportRows(
+          activeConnection.id,
+          activeTable.schema,
+          activeTable.name,
+          { filters, orderBy }
+        )
+        exportRows = result.rows
+      }
+      const content = formatExport({
+        format,
+        schema: activeTable.schema,
+        table: activeTable.name,
+        columns,
+        rows: exportRows,
+      })
+      const defaultPath = `${activeTable.schema}_${activeTable.name}.${format}`
+      const result = await window.gamalab.dialog.saveExport({
+        defaultPath,
+        content,
+        format,
+      })
+      if (!result.canceled) {
+        showToast(`Exported ${exportRows.length} row${exportRows.length === 1 ? '' : 's'}`, 'success')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleDropTable = async () => {
     if (!activeConnection || !activeTable) return
     const ok = await window.gamalab.dialog.confirm({
@@ -748,6 +821,55 @@ export function TableBrowser() {
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             Refresh
           </Button>
+          <div className="relative" ref={exportMenuRef}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setExportMenuOpen((o) => !o)}
+              disabled={exporting || columns.length === 0}
+              title="Export rows"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Export
+            </Button>
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 min-w-[240px] rounded-md border border-border bg-popover p-1 text-xs shadow-lg">
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Current page ({rows.length} row{rows.length === 1 ? '' : 's'})
+                </div>
+                {['csv', 'json', 'sql'].map((fmt) => (
+                  <button
+                    key={`page-${fmt}`}
+                    onClick={() => handleExport(fmt, 'page')}
+                    disabled={rows.length === 0}
+                    className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-accent disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    <span>As {fmt.toUpperCase()}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">.{fmt}</span>
+                  </button>
+                ))}
+                <div className="my-1 border-t border-border" />
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  All rows{filters.length > 0 ? ' (filtered)' : ''}
+                  {rowCount != null && ` · ${rowCount.toLocaleString()}`}
+                </div>
+                {['csv', 'json', 'sql'].map((fmt) => (
+                  <button
+                    key={`all-${fmt}`}
+                    onClick={() => handleExport(fmt, 'all')}
+                    className="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-accent"
+                  >
+                    <span>As {fmt.toUpperCase()}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">.{fmt}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button size="sm" variant="ghost" onClick={goToSql} title="Open as SQL">
             <Code2 className="h-3.5 w-3.5" />
             SQL
@@ -881,6 +1003,15 @@ export function TableBrowser() {
                             {col.is_primary_key && (
                               <span className="ml-1 text-lab-orange/80">PK</span>
                             )}
+                            {col.foreign_table && (
+                              <span
+                                className="ml-1 inline-flex items-center gap-0.5 text-lab-blue/80"
+                                title={`→ ${col.foreign_schema}.${col.foreign_table}.${col.foreign_column}`}
+                              >
+                                <Link2 className="h-2.5 w-2.5" />
+                                FK
+                              </span>
+                            )}
                           </span>
                         </div>
                         <SortIcon
@@ -1003,6 +1134,33 @@ export function TableBrowser() {
                                 onCancel={cancelEdit}
                                 inputRef={editInputRef}
                               />
+                            ) : col.foreign_table && row[col.name] !== null && row[col.name] !== undefined ? (
+                              <div className="flex items-center gap-1">
+                                <span className="min-w-0 flex-1 truncate text-lab-blue">
+                                  {renderValue(row[col.name])}
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    navigateToTableWithFilter(
+                                      col.foreign_schema,
+                                      col.foreign_table,
+                                      [
+                                        {
+                                          column: col.foreign_column,
+                                          op: '=',
+                                          value: row[col.name],
+                                        },
+                                      ]
+                                    )
+                                  }}
+                                  onDoubleClick={(e) => e.stopPropagation()}
+                                  className="shrink-0 rounded p-0.5 text-lab-blue/60 transition-colors hover:bg-background hover:text-lab-blue"
+                                  title={`Jump to ${col.foreign_schema}.${col.foreign_table}.${col.foreign_column} = ${row[col.name]}`}
+                                >
+                                  <Link2 className="h-3 w-3" />
+                                </button>
+                              </div>
                             ) : (
                               renderValue(row[col.name])
                             )}

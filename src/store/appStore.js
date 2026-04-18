@@ -28,6 +28,7 @@ export const useAppStore = create((set, get) => ({
   insertRowDialogOpen: false,
   editTableDialogOpen: false,
   editTableTarget: null, // { schema, name }
+  pendingTableFilters: null, // { schema, name, filters } — one-shot hint for FK navigation
   viewMode: 'sql', // 'sql' | 'browse'
   activeTable: null, // { schema, name } | null
 
@@ -99,6 +100,19 @@ export const useAppStore = create((set, get) => ({
   setEditTableDialogOpen: (open) => set({ editTableDialogOpen: open }),
   openEditTableDialog: (schema, name) =>
     set({ editTableTarget: { schema, name }, editTableDialogOpen: true }),
+
+  navigateToTableWithFilter: (schema, name, filters) => {
+    set({
+      pendingTableFilters: { schema, name, filters },
+      activeTable: { schema, name },
+      viewMode: 'browse',
+    })
+  },
+  consumePendingFilters: () => {
+    const pending = get().pendingTableFilters
+    if (pending) set({ pendingTableFilters: null })
+    return pending
+  },
 
   setTheme: (theme) => {
     set({ theme })

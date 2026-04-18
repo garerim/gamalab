@@ -66,6 +66,35 @@ class DbService {
     await Promise.all(ids.map((id) => this.disconnect(id)))
   }
 
+  async runTransaction(id, statements) {
+    const pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection. Please connect first.')
+    if (!Array.isArray(statements) || statements.length === 0) {
+      return { executed: 0 }
+    }
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      for (const stmt of statements) {
+        const sql = typeof stmt === 'string' ? stmt : stmt?.sql
+        const params = typeof stmt === 'string' ? [] : stmt?.params || []
+        if (!sql) continue
+        await client.query(sql, params)
+      }
+      await client.query('COMMIT')
+      return { executed: statements.length }
+    } catch (err) {
+      try {
+        await client.query('ROLLBACK')
+      } catch {
+        /* ignore */
+      }
+      throw new Error(this._friendlyError(err))
+    } finally {
+      client.release()
+    }
+  }
+
   async query(id, sql, params = []) {
     const pool = this.pools.get(id)
     if (!pool) throw new Error('No active connection. Please connect first.')
@@ -197,7 +226,9 @@ class DbService {
     if (!pool) throw new Error('No active connection')
     this._validateIdent(schema)
     this._validateIdent(table)
-    const { rows } = await pool.query(
+
+    // 1) Base column info + PK flag
+    const { rows: cols } = await pool.query(
       `SELECT
          c.column_name AS name,
          c.data_type AS type,
@@ -221,7 +252,65 @@ class DbService {
        ORDER BY c.ordinal_position`,
       [schema, table]
     )
-    return rows
+
+    // 2) Foreign keys (single-column only) via pg_catalog — most reliable across PG versions
+    const { rows: fks } = await pool.query(
+      `SELECT
+         a.attname AS column_name,
+         con.conname AS constraint_name,
+         fns.nspname AS foreign_schema,
+         ft.relname AS foreign_table,
+         fa.attname AS foreign_column
+       FROM pg_constraint con
+       JOIN pg_class t ON t.oid = con.conrelid
+       JOIN pg_namespace tns ON tns.oid = t.relnamespace
+       JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+       JOIN pg_class ft ON ft.oid = con.confrelid
+       JOIN pg_namespace fns ON fns.oid = ft.relnamespace
+       JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = con.confkey[1]
+       WHERE con.contype = 'f'
+         AND cardinality(con.conkey) = 1
+         AND tns.nspname = $1
+         AND t.relname = $2`,
+      [schema, table]
+    )
+
+    const fkByCol = new Map(fks.map((f) => [f.column_name, f]))
+    return cols.map((c) => {
+      const fk = fkByCol.get(c.name)
+      return {
+        ...c,
+        foreign_schema: fk ? fk.foreign_schema : null,
+        foreign_table: fk ? fk.foreign_table : null,
+        foreign_column: fk ? fk.foreign_column : null,
+        fk_constraint_name: fk ? fk.constraint_name : null,
+      }
+    })
+  }
+
+  async exportRows(id, schema, table, { filters = [], orderBy = null, limit = null } = {}) {
+    const pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection')
+    this._validateIdent(schema)
+    this._validateIdent(table)
+
+    const { whereClause, params } = this._buildWhere(filters)
+
+    let orderClause = ''
+    if (orderBy && typeof orderBy.column === 'string') {
+      this._validateIdent(orderBy.column)
+      const dir = orderBy.direction === 'desc' ? 'DESC' : 'ASC'
+      orderClause = ` ORDER BY ${this._qi(orderBy.column)} ${dir}`
+    }
+
+    const limitClause = limit != null ? ` LIMIT ${Math.max(1, Math.floor(Number(limit)))}` : ''
+
+    const sql = `SELECT * FROM ${this._qi(schema)}.${this._qi(table)}${whereClause}${orderClause}${limitClause}`
+    const result = await pool.query(sql, params)
+    return {
+      rows: result.rows,
+      fields: result.fields.map((f) => ({ name: f.name, dataTypeID: f.dataTypeID })),
+    }
   }
 
   async countTableRows(id, schema, table, filters = []) {

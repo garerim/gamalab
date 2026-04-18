@@ -7,6 +7,7 @@ import {
   Loader2,
   Code2,
   GripVertical,
+  Link2,
 } from 'lucide-react'
 import {
   Dialog,
@@ -36,6 +37,7 @@ const PG_TYPES = [
 
 const ALL_TYPES = PG_TYPES.flatMap((g) => g.types)
 const AUTO_TYPES = new Set(['serial', 'bigserial'])
+const FK_ACTIONS = ['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']
 
 function quoteIdent(name) {
   return '"' + String(name).replace(/"/g, '""') + '"'
@@ -55,7 +57,23 @@ function newColumn(overrides = {}) {
   }
 }
 
-function buildCreateSql(schema, name, columns) {
+function newFk() {
+  return {
+    id: `fk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    sourceColumn: '',
+    targetSchema: '',
+    targetTable: '',
+    targetColumn: '',
+    onDelete: 'NO ACTION',
+    onUpdate: 'NO ACTION',
+  }
+}
+
+function isValidFk(fk) {
+  return !!(fk.sourceColumn && fk.targetSchema && fk.targetTable && fk.targetColumn)
+}
+
+function buildCreateSql(schema, name, columns, foreignKeys) {
   if (!name) return ''
   const colLines = columns
     .filter((c) => c.name.trim())
@@ -72,7 +90,23 @@ function buildCreateSql(schema, name, columns) {
       if (c.defaultValue) parts.push(`DEFAULT ${c.defaultValue}`)
       return '  ' + parts.join(' ')
     })
-  return `CREATE TABLE ${quoteIdent(schema || 'public')}.${quoteIdent(name)} (\n${colLines.join(',\n')}\n);`
+
+  const fkLines = (foreignKeys || [])
+    .filter(isValidFk)
+    .map((fk) => {
+      const constraintName = `${name}_${fk.sourceColumn}_fkey`
+      const tail = []
+      if (fk.onDelete && fk.onDelete !== 'NO ACTION') tail.push(`ON DELETE ${fk.onDelete}`)
+      if (fk.onUpdate && fk.onUpdate !== 'NO ACTION') tail.push(`ON UPDATE ${fk.onUpdate}`)
+      return (
+        `  CONSTRAINT ${quoteIdent(constraintName)} FOREIGN KEY (${quoteIdent(fk.sourceColumn)})` +
+        ` REFERENCES ${quoteIdent(fk.targetSchema)}.${quoteIdent(fk.targetTable)} (${quoteIdent(fk.targetColumn)})` +
+        (tail.length ? ' ' + tail.join(' ') : '')
+      )
+    })
+
+  const allLines = [...colLines, ...fkLines]
+  return `CREATE TABLE ${quoteIdent(schema || 'public')}.${quoteIdent(name)} (\n${allLines.join(',\n')}\n);`
 }
 
 export function CreateTableDialog() {
@@ -95,6 +129,9 @@ export function CreateTableDialog() {
   const [showSql, setShowSql] = useState(false)
   const [draggedId, setDraggedId] = useState(null)
   const [dragOverId, setDragOverId] = useState(null)
+  const [foreignKeys, setForeignKeys] = useState([])
+  const [allDbTables, setAllDbTables] = useState([])
+  const [targetColsCache, setTargetColsCache] = useState({}) // "schema.table" -> columns[]
 
   useEffect(() => {
     if (createTableDialogOpen) {
@@ -104,10 +141,40 @@ export function CreateTableDialog() {
         newColumn({ name: 'id', type: 'serial', primaryKey: true, nullable: false }),
         newColumn({ name: 'created_at', type: 'timestamptz', nullable: false, defaultValue: 'now()' }),
       ])
+      setForeignKeys([])
+      setTargetColsCache({})
       setSubmitting(false)
       setShowSql(false)
+      if (activeConnection) {
+        window.gamalab.db
+          .listAllTables(activeConnection.id)
+          .then((tables) => setAllDbTables(tables.filter((t) => t.type !== 'VIEW')))
+          .catch(() => setAllDbTables([]))
+      }
     }
-  }, [createTableDialogOpen])
+  }, [createTableDialogOpen, activeConnection])
+
+  const loadTargetColumns = async (targetSchema, targetTable) => {
+    if (!activeConnection || !targetSchema || !targetTable) return
+    const key = `${targetSchema}.${targetTable}`
+    if (targetColsCache[key]) return
+    try {
+      const cols = await window.gamalab.db.listColumns(
+        activeConnection.id,
+        targetSchema,
+        targetTable
+      )
+      setTargetColsCache((c) => ({ ...c, [key]: cols }))
+    } catch {
+      setTargetColsCache((c) => ({ ...c, [key]: [] }))
+    }
+  }
+
+  const addFk = () => setForeignKeys((fks) => [...fks, newFk()])
+  const removeFk = (id) => setForeignKeys((fks) => fks.filter((f) => f.id !== id))
+  const updateFk = (id, patch) => {
+    setForeignKeys((fks) => fks.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+  }
 
   const updateCol = (id, patch) => {
     setColumns((cols) => cols.map((c) => (c.id === id ? { ...c, ...patch } : c)))
@@ -146,7 +213,10 @@ export function CreateTableDialog() {
     )
   }
 
-  const sql = useMemo(() => buildCreateSql(schema, tableName, columns), [schema, tableName, columns])
+  const sql = useMemo(
+    () => buildCreateSql(schema, tableName, columns, foreignKeys),
+    [schema, tableName, columns, foreignKeys]
+  )
 
   const handleSubmit = async () => {
     if (!activeConnection) {
@@ -168,6 +238,16 @@ export function CreateTableDialog() {
     for (const c of columns) {
       if (c.name.trim() && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(c.name)) {
         showToast(`Invalid column name: ${c.name}`, 'warning')
+        return
+      }
+    }
+    for (const fk of foreignKeys) {
+      if (!isValidFk(fk)) {
+        showToast('One or more foreign keys are incomplete', 'warning')
+        return
+      }
+      if (!columns.some((c) => c.name === fk.sourceColumn)) {
+        showToast(`FK source column "${fk.sourceColumn}" does not exist`, 'warning')
         return
       }
     }
@@ -413,6 +493,161 @@ export function CreateTableDialog() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+                <Link2 className="h-3 w-3" />
+                Foreign keys ({foreignKeys.length})
+              </Label>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={addFk}
+                disabled={submitting || allDbTables.length === 0}
+                className="h-7 px-2 text-[11px]"
+                title={
+                  allDbTables.length === 0
+                    ? 'No tables in this database to reference'
+                    : 'Add a foreign key'
+                }
+              >
+                <Plus className="h-3 w-3" />
+                Add FK
+              </Button>
+            </div>
+
+            {foreignKeys.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-2">
+                {foreignKeys.map((fk) => {
+                  const targetKey = `${fk.targetSchema}.${fk.targetTable}`
+                  const targetCols = targetColsCache[targetKey] || []
+                  const schemas = Array.from(
+                    new Set(allDbTables.map((t) => t.schema))
+                  ).sort()
+                  const tablesForSchema = allDbTables.filter(
+                    (t) => t.schema === fk.targetSchema
+                  )
+                  return (
+                    <div
+                      key={fk.id}
+                      className="flex flex-col gap-1.5 rounded border border-border bg-background p-2 text-xs"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">From</span>
+                        <select
+                          value={fk.sourceColumn}
+                          onChange={(e) =>
+                            updateFk(fk.id, { sourceColumn: e.target.value })
+                          }
+                          disabled={submitting}
+                          className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">(select column)</option>
+                          {columns
+                            .filter((c) => c.name.trim())
+                            .map((c) => (
+                              <option key={c.id} value={c.name}>
+                                {c.name}
+                              </option>
+                            ))}
+                        </select>
+                        <span className="text-muted-foreground">→</span>
+                        <select
+                          value={fk.targetSchema}
+                          onChange={(e) =>
+                            updateFk(fk.id, {
+                              targetSchema: e.target.value,
+                              targetTable: '',
+                              targetColumn: '',
+                            })
+                          }
+                          disabled={submitting}
+                          className="h-7 w-24 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">schema</option>
+                          {schemas.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={fk.targetTable}
+                          onChange={(e) => {
+                            const newTable = e.target.value
+                            updateFk(fk.id, { targetTable: newTable, targetColumn: '' })
+                            if (newTable) loadTargetColumns(fk.targetSchema, newTable)
+                          }}
+                          disabled={submitting || !fk.targetSchema}
+                          className="h-7 min-w-0 flex-1 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">table</option>
+                          {tablesForSchema.map((t) => (
+                            <option key={t.name} value={t.name}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={fk.targetColumn}
+                          onChange={(e) =>
+                            updateFk(fk.id, { targetColumn: e.target.value })
+                          }
+                          disabled={submitting || !fk.targetTable}
+                          className="h-7 w-28 rounded border border-input bg-background px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">column</option>
+                          {targetCols.map((c) => (
+                            <option key={c.name} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="iconSm"
+                          variant="ghost"
+                          onClick={() => removeFk(fk.id)}
+                          disabled={submitting}
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1.5 pl-1 text-[10px] text-muted-foreground">
+                        <span className="uppercase tracking-wider">On delete</span>
+                        <select
+                          value={fk.onDelete}
+                          onChange={(e) => updateFk(fk.id, { onDelete: e.target.value })}
+                          disabled={submitting}
+                          className="h-6 rounded border border-input bg-background px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          {FK_ACTIONS.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="ml-3 uppercase tracking-wider">On update</span>
+                        <select
+                          value={fk.onUpdate}
+                          onChange={(e) => updateFk(fk.id, { onUpdate: e.target.value })}
+                          disabled={submitting}
+                          className="h-6 rounded border border-input bg-background px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          {FK_ACTIONS.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {showSql && (
             <div className="rounded-md border border-border bg-background p-3">
               <pre className="whitespace-pre-wrap font-mono text-[11px] text-foreground/90">
@@ -426,6 +661,12 @@ export function CreateTableDialog() {
             {columns.some((c) => c.primaryKey) && (
               <Badge variant="warning">
                 PK: {columns.filter((c) => c.primaryKey).map((c) => c.name).join(', ')}
+              </Badge>
+            )}
+            {foreignKeys.filter(isValidFk).length > 0 && (
+              <Badge variant="info">
+                {foreignKeys.filter(isValidFk).length} FK
+                {foreignKeys.filter(isValidFk).length === 1 ? '' : 's'}
               </Badge>
             )}
           </div>

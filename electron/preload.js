@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('gamalab', {
     connect: (config) => ipcRenderer.invoke('db:connect', config),
     disconnect: (id) => ipcRenderer.invoke('db:disconnect', id),
     query: (id, sql, params) => ipcRenderer.invoke('db:query', id, sql, params),
+    transaction: (id, statements) => ipcRenderer.invoke('db:transaction', id, statements),
+    exportRows: (id, schema, table, options) =>
+      ipcRenderer.invoke('db:export-rows', id, schema, table, options),
     listDatabases: (id) => ipcRenderer.invoke('db:list-databases', id),
     createDatabase: (id, name, options) =>
       ipcRenderer.invoke('db:create-database', id, name, options),
@@ -41,6 +44,7 @@ contextBridge.exposeInMainWorld('gamalab', {
   },
   dialog: {
     confirm: (options) => ipcRenderer.invoke('dialog:confirm', options),
+    saveExport: (options) => ipcRenderer.invoke('dialog:save-export', options),
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
