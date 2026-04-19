@@ -1,5 +1,8 @@
 const Docker = require('dockerode')
 const net = require('net')
+const fs = require('fs')
+const { execSync, spawn } = require('child_process')
+const { shell } = require('electron')
 
 const GAMALAB_LABEL = 'com.gamalab.managed'
 const IMAGE = 'postgres:16'
@@ -20,11 +23,84 @@ class DockerService {
         images: info.Images,
       }
     } catch (err) {
+      // Daemon unreachable — figure out if Docker is even installed on the host
+      const installInfo = this._detectInstall()
       return {
-        installed: true,
+        installed: installInfo.installed,
+        installPath: installInfo.installPath,
         running: false,
         error: this._friendlyError(err),
       }
+    }
+  }
+
+  /**
+   * Detect whether Docker Desktop / Docker Engine is installed on this host.
+   * Returns { installed, installPath }.
+   */
+  _detectInstall() {
+    try {
+      if (process.platform === 'win32') {
+        const candidates = [
+          process.env.ProgramFiles && `${process.env.ProgramFiles}\\Docker\\Docker\\Docker Desktop.exe`,
+          process.env['ProgramFiles(x86)'] &&
+            `${process.env['ProgramFiles(x86)']}\\Docker\\Docker\\Docker Desktop.exe`,
+          process.env.LOCALAPPDATA &&
+            `${process.env.LOCALAPPDATA}\\Programs\\Docker\\Docker\\Docker Desktop.exe`,
+        ].filter(Boolean)
+        for (const p of candidates) {
+          if (fs.existsSync(p)) return { installed: true, installPath: p }
+        }
+        return { installed: false, installPath: null }
+      }
+      if (process.platform === 'darwin') {
+        const p = '/Applications/Docker.app'
+        if (fs.existsSync(p)) return { installed: true, installPath: p }
+        return { installed: false, installPath: null }
+      }
+      // Linux: check for docker CLI in PATH
+      try {
+        const out = execSync('command -v docker', { stdio: ['ignore', 'pipe', 'ignore'] })
+          .toString()
+          .trim()
+        if (out) return { installed: true, installPath: out }
+      } catch {
+        /* not in PATH */
+      }
+      return { installed: false, installPath: null }
+    } catch {
+      return { installed: false, installPath: null }
+    }
+  }
+
+  /**
+   * Try to launch Docker Desktop so the user doesn't have to hunt for it.
+   * Returns { launched: boolean, reason?: string }.
+   */
+  async launchDockerDesktop() {
+    const { installed, installPath } = this._detectInstall()
+    if (!installed || !installPath) {
+      return { launched: false, reason: 'Docker is not installed on this machine.' }
+    }
+    try {
+      if (process.platform === 'win32') {
+        // `detached: true` lets Docker Desktop keep running after we exit
+        spawn(installPath, [], { detached: true, stdio: 'ignore' }).unref()
+        return { launched: true }
+      }
+      if (process.platform === 'darwin') {
+        const err = await shell.openPath(installPath)
+        if (err) return { launched: false, reason: err }
+        return { launched: true }
+      }
+      // Linux: assume the daemon is managed by systemd / user
+      return {
+        launched: false,
+        reason:
+          'On Linux, start the Docker daemon manually (e.g. `sudo systemctl start docker`).',
+      }
+    } catch (err) {
+      return { launched: false, reason: err.message || String(err) }
     }
   }
 

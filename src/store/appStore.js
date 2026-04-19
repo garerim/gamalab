@@ -33,6 +33,15 @@ export const useAppStore = create((set, get) => ({
   viewMode: 'sql', // 'sql' | 'browse'
   activeTable: null, // { schema, name } | null
 
+  // Onboarding
+  welcomeDialogOpen: false,
+  onboardingCompleted: false, // hydrated from disk on initialize()
+
+  // Connection health: { [id]: { status: 'healthy'|'degraded'|'broken'|'unknown', lastPing: number, latencyMs: number } }
+  connectionHealth: {},
+  // Stashed by useHealthCheck so any component can force an immediate ping
+  forceHealthRefresh: null,
+
   // Theme
   theme: (typeof localStorage !== 'undefined' && localStorage.getItem('gamalab-theme')) || 'dark',
 
@@ -103,6 +112,26 @@ export const useAppStore = create((set, get) => ({
   openEditTableDialog: (schema, name) =>
     set({ editTableTarget: { schema, name }, editTableDialogOpen: true }),
 
+  setWelcomeDialogOpen: (open) => set({ welcomeDialogOpen: open }),
+  markOnboardingComplete: () => {
+    set({ onboardingCompleted: true })
+    window.gamalab?.store?.set('onboardingCompleted', true)
+  },
+
+  setConnectionHealth: (id, health) =>
+    set({
+      connectionHealth: {
+        ...get().connectionHealth,
+        [id]: { ...health, lastPing: Date.now() },
+      },
+    }),
+  clearConnectionHealth: (id) => {
+    const next = { ...get().connectionHealth }
+    delete next[id]
+    set({ connectionHealth: next })
+  },
+  setForceHealthRefresh: (fn) => set({ forceHealthRefresh: fn }),
+
   navigateToTableWithFilter: (schema, name, filters) => {
     set({
       pendingTableFilters: { schema, name, filters },
@@ -152,13 +181,15 @@ export const useAppStore = create((set, get) => ({
   // === Bootstrap ===
   initialize: async () => {
     try {
-      const [connections, queryHistory] = await Promise.all([
+      const [connections, queryHistory, onboardingCompleted] = await Promise.all([
         window.gamalab.store.get('connections'),
         window.gamalab.store.get('queryHistory'),
+        window.gamalab.store.get('onboardingCompleted'),
       ])
       set({
         connections: connections || [],
         queryHistory: queryHistory || [],
+        onboardingCompleted: !!onboardingCompleted,
       })
     } catch (err) {
       console.error('Failed to initialize store', err)

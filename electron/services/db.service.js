@@ -4,6 +4,9 @@ const crypto = require('crypto')
 class DbService {
   constructor() {
     this.pools = new Map()
+    // Sanitized config kept around so we can rebuild a pool transparently
+    // when an idle connection drops (auto-reconnect on connection-class errors).
+    this.poolConfigs = new Map()
   }
 
   _connectionId(config) {
@@ -42,6 +45,15 @@ class DbService {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: Number(config.connectionTimeoutMs) || 10000,
       statement_timeout: Number(config.statementTimeoutMs) || 60000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+    })
+
+    // Without an `error` listener, an idle client error (server restart,
+    // network drop, idle timeout from the cloud DB) becomes an UNCAUGHT
+    // EXCEPTION and crashes the whole Electron main process.
+    pool.on('error', (err) => {
+      console.error(`[db pool ${id}] idle client error:`, err?.message || err)
     })
 
     try {
@@ -50,6 +62,9 @@ class DbService {
       client.release()
 
       this.pools.set(id, pool)
+      // Stash a copy of the config so we can rebuild this pool on a stale
+      // connection drop. The id is forced so reconnects keep the same key.
+      this.poolConfigs.set(id, { ...config, id })
 
       return {
         id,
@@ -71,6 +86,7 @@ class DbService {
     if (pool) {
       await pool.end().catch(() => {})
       this.pools.delete(id)
+      this.poolConfigs.delete(id)
     }
     return { success: true }
   }
@@ -109,15 +125,77 @@ class DbService {
     }
   }
 
-  async query(id, sql, params = []) {
+  async ping(id) {
     const pool = this.pools.get(id)
-    if (!pool) throw new Error('No active connection. Please connect first.')
-
+    if (!pool) return { ok: false, error: 'No active connection.' }
     const start = Date.now()
     try {
-      const result = await pool.query(sql, params)
-      const duration = Date.now() - start
+      await pool.query('SELECT 1')
+      return { ok: true, duration: Date.now() - start }
+    } catch (err) {
+      return {
+        ok: false,
+        duration: Date.now() - start,
+        error: this._friendlyError(err),
+      }
+    }
+  }
 
+  /**
+   * Detect an error class that indicates the underlying TCP connection or
+   * server session is dead — these are recoverable by rebuilding the pool,
+   * unlike e.g. syntax errors or permission issues.
+   */
+  _isConnectionError(err) {
+    if (!err) return false
+    const code = err.code
+    if (
+      code === '08000' ||
+      code === '08001' ||
+      code === '08003' ||
+      code === '08004' ||
+      code === '08006' ||
+      code === '57P01' ||
+      code === '57P02' ||
+      code === '57P03' ||
+      code === 'ECONNRESET' ||
+      code === 'EPIPE' ||
+      code === 'ETIMEDOUT'
+    ) {
+      return true
+    }
+    const msg = err.message || String(err)
+    return /Connection terminated|Client has encountered a connection error|server closed the connection unexpectedly|read ECONNRESET|write EPIPE|connection has been closed/i.test(
+      msg
+    )
+  }
+
+  /**
+   * Tear down the existing pool for `id` and rebuild it from the cached
+   * config. Returns the new pool, or null if no config is known.
+   */
+  async _rebuildPool(id) {
+    const config = this.poolConfigs.get(id)
+    if (!config) return null
+    // Drop the dead pool first; connect() will repopulate both maps.
+    const dead = this.pools.get(id)
+    if (dead) {
+      await dead.end().catch(() => {})
+      this.pools.delete(id)
+      // Keep poolConfigs around — connect() will overwrite it
+    }
+    await this.connect(config)
+    return this.pools.get(id) || null
+  }
+
+  async query(id, sql, params = []) {
+    let pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection. Please connect first.')
+
+    const exec = async (p) => {
+      const start = Date.now()
+      const result = await p.query(sql, params)
+      const duration = Date.now() - start
       if (Array.isArray(result)) {
         return {
           multi: true,
@@ -125,9 +203,25 @@ class DbService {
           duration,
         }
       }
-
       return this._mapResult(result, duration)
+    }
+
+    try {
+      return await exec(pool)
     } catch (err) {
+      // Auto-reconnect: only on connection-class errors, single retry.
+      // Skip retry for transactional statements — restarting the pool would
+      // silently abandon the in-flight transaction state and confuse callers.
+      const trimmed = (sql || '').trim().toUpperCase()
+      const isTxStmt = /^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/.test(trimmed)
+      if (this._isConnectionError(err) && !isTxStmt) {
+        try {
+          const newPool = await this._rebuildPool(id)
+          if (newPool) return await exec(newPool)
+        } catch (retryErr) {
+          throw new Error(this._friendlyError(retryErr))
+        }
+      }
       throw new Error(this._friendlyError(err))
     }
   }
@@ -500,13 +594,39 @@ class DbService {
       return 'Authentication method not allowed. Check pg_hba or SSL requirements.'
     }
     if (err?.code === '3D000') {
-      return `Database does not exist: ${err.message}`
+      return `Database "${err.message?.match(/database "([^"]+)"/)?.[1] || ''}" does not exist. It may have been dropped — try disconnecting and reconnecting.`
     }
     if (err?.code === '42601') {
       return `SQL syntax error: ${err.message}`
     }
     if (err?.code === '42P01') {
-      return `Table not found: ${err.message}`
+      return `Table not found: ${err.message}. The schema may have changed — refresh the tables list.`
+    }
+    if (err?.code === '42501') {
+      return `Permission denied: your user lacks the required privileges. ${err.message}`
+    }
+    if (err?.code === '53300') {
+      return 'Too many connections to the server. Close some clients and retry.'
+    }
+    if (err?.code === '57014') {
+      return 'Query was cancelled (statement timeout exceeded?).'
+    }
+    if (err?.code === '25P02') {
+      return 'Transaction is in a failed state — rolling back. Re-run your statement.'
+    }
+    // Connection-related errors — server gone away, network dropped, etc.
+    if (
+      err?.code === '08000' ||
+      err?.code === '08003' ||
+      err?.code === '08006' ||
+      err?.code === '08001' ||
+      err?.code === '08004' ||
+      err?.code === '57P01' ||
+      err?.code === '57P02' ||
+      err?.code === '57P03' ||
+      /Connection terminated|Client has encountered a connection error|server closed the connection unexpectedly|read ECONNRESET|write EPIPE/i.test(msg)
+    ) {
+      return 'Connection lost. The server closed or restarted. Reconnect to continue.'
     }
     return msg
   }

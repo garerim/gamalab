@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('gamalab', {
   docker: {
     check: () => ipcRenderer.invoke('docker:check'),
+    launchDesktop: () => ipcRenderer.invoke('docker:launch-desktop'),
     list: () => ipcRenderer.invoke('docker:list'),
     create: (config) => ipcRenderer.invoke('docker:create', config),
     start: (id) => ipcRenderer.invoke('docker:start', id),
@@ -17,6 +18,7 @@ contextBridge.exposeInMainWorld('gamalab', {
     disconnect: (id) => ipcRenderer.invoke('db:disconnect', id),
     query: (id, sql, params) => ipcRenderer.invoke('db:query', id, sql, params),
     transaction: (id, statements) => ipcRenderer.invoke('db:transaction', id, statements),
+    ping: (id) => ipcRenderer.invoke('db:ping', id),
     exportRows: (id, schema, table, options) =>
       ipcRenderer.invoke('db:export-rows', id, schema, table, options),
     listSchemaInfo: (id) => ipcRenderer.invoke('db:list-schema-info', id),

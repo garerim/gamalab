@@ -155,6 +155,10 @@ ipcMain.handle('docker:check', async () => {
   return await dockerService.checkDocker()
 })
 
+ipcMain.handle('docker:launch-desktop', async () => {
+  return await dockerService.launchDockerDesktop()
+})
+
 ipcMain.handle('docker:list', async () => {
   return await dockerService.listContainers()
 })
@@ -202,6 +206,10 @@ ipcMain.handle('db:query', async (_evt, id, sql, params) => {
 
 ipcMain.handle('db:transaction', async (_evt, id, statements) => {
   return await dbService.runTransaction(id, statements)
+})
+
+ipcMain.handle('db:ping', async (_evt, id) => {
+  return await dbService.ping(id)
 })
 
 ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {

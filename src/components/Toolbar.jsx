@@ -9,7 +9,7 @@ import { useDatabase } from '@/hooks/useDatabase'
 export function Toolbar({ onRunQuery }) {
   const { dockerStatus } = useDocker()
   const { activeConnection } = useDatabase()
-  const { setCreateDialogOpen, setAboutOpen, queryRunning, currentQuery, theme, toggleTheme } = useAppStore()
+  const { setCreateDialogOpen, setAboutOpen, setWelcomeDialogOpen, queryRunning, currentQuery, theme, toggleTheme } = useAppStore()
 
   const { refreshContainers } = useDocker()
 
@@ -31,6 +31,11 @@ export function Toolbar({ onRunQuery }) {
           variant="lab"
           onClick={() => setCreateDialogOpen(true)}
           disabled={!dockerStatus.running}
+          title={
+            dockerStatus.running
+              ? 'Create a new Postgres Docker container'
+              : 'Docker is not running — click the Docker badge for setup help'
+          }
         >
           <Plus className="h-4 w-4" />
           New Database
@@ -69,7 +74,14 @@ export function Toolbar({ onRunQuery }) {
         {dockerStatus.running ? (
           <Badge variant="success">Docker {dockerStatus.version}</Badge>
         ) : dockerStatus.checked ? (
-          <Badge variant="destructive">Docker offline</Badge>
+          <button
+            onClick={() => setWelcomeDialogOpen(true)}
+            title="Docker not available — click for setup help"
+          >
+            <Badge variant="destructive" className="cursor-pointer hover:opacity-80">
+              Docker offline
+            </Badge>
+          </button>
         ) : (
           <Badge variant="outline">Checking…</Badge>
         )}

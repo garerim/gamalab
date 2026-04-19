@@ -11,21 +11,37 @@ import { ConnectRemoteDialog } from '@/components/ConnectRemoteDialog'
 import { NewLogicalDbDialog } from '@/components/NewLogicalDbDialog'
 import { CreateTableDialog } from '@/components/CreateTableDialog'
 import { EditTableDialog } from '@/components/EditTableDialog'
+import { WelcomeDialog } from '@/components/WelcomeDialog'
 import { AboutDialog } from '@/components/AboutDialog'
 import { Toast } from '@/components/Toast'
 import { StatusBar } from '@/components/StatusBar'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
+import { useHealthCheck } from '@/hooks/useHealthCheck'
 
 export default function App() {
   const initialize = useAppStore((s) => s.initialize)
   const viewMode = useAppStore((s) => s.viewMode)
   const activeTable = useAppStore((s) => s.activeTable)
-  const { runQuery } = useDatabase()
+  const dockerStatus = useAppStore((s) => s.dockerStatus)
+  const onboardingCompleted = useAppStore((s) => s.onboardingCompleted)
+  const setWelcomeDialogOpen = useAppStore((s) => s.setWelcomeDialogOpen)
+  const { runQuery, activeConnection } = useDatabase()
+  useHealthCheck()
 
   useEffect(() => {
     initialize()
   }, [initialize])
+
+  // First-launch onboarding: show Welcome once we know the Docker state, the
+  // user hasn't completed onboarding, and there's no existing connection.
+  useEffect(() => {
+    if (!dockerStatus.checked) return
+    if (onboardingCompleted) return
+    if (activeConnection) return
+    if (dockerStatus.running) return
+    setWelcomeDialogOpen(true)
+  }, [dockerStatus.checked, dockerStatus.running, onboardingCompleted, activeConnection, setWelcomeDialogOpen])
 
   const handleRunQuery = async (sql) => {
     await runQuery(sql)
@@ -69,6 +85,7 @@ export default function App() {
         <NewLogicalDbDialog />
         <CreateTableDialog />
         <EditTableDialog />
+        <WelcomeDialog />
         <AboutDialog />
         <Toast />
       </div>

@@ -9,7 +9,7 @@ import { useAppStore } from '@/store/appStore'
 
 export function ConnectionList() {
   const { connections, activeConnectionId, activeConnection, setActiveConnectionId, connect, disconnect } = useDatabase()
-  const { setCreateDialogOpen, setNewLogicalDbDialogOpen, setConnectRemoteDialogOpen } = useAppStore()
+  const { setCreateDialogOpen, setNewLogicalDbDialogOpen, setConnectRemoteDialogOpen, connectionHealth } = useAppStore()
 
   if (connections.length === 0) {
     return (
@@ -76,6 +76,7 @@ export function ConnectionList() {
           const isActive = conn.id === activeConnectionId
           const isRemote = conn.kind === 'remote'
           const Icon = isRemote ? Cable : Container
+          const health = connectionHealth[conn.id]
           return (
             <div
               key={conn.id}
@@ -103,7 +104,14 @@ export function ConnectionList() {
                     {isRemote ? 'remote' : 'docker'}
                   </Badge>
                 </div>
-                {isActive && <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-lab-green" />}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <HealthDot
+                    isActive={isActive}
+                    status={health?.status}
+                    latencyMs={health?.latencyMs}
+                  />
+                  {isActive && <CheckCircle2 className="h-3.5 w-3.5 text-lab-green" />}
+                </div>
               </div>
               <div className="pl-6 text-muted-foreground">
                 {conn.user}@{conn.host}:{conn.port}
@@ -141,5 +149,37 @@ export function ConnectionList() {
       </div>
     </ScrollArea>
     </div>
+  )
+}
+
+function HealthDot({ isActive, status, latencyMs }) {
+  const forceHealthRefresh = useAppStore((s) => s.forceHealthRefresh)
+  // Only show a status dot for the active connection — health checks only
+  // run against the active one, so other entries' status would be stale.
+  if (!isActive || !status) return null
+  const colorClass = {
+    healthy: 'bg-lab-green',
+    degraded: 'bg-lab-orange',
+    broken: 'bg-destructive animate-pulse',
+    unknown: 'bg-muted-foreground/40',
+  }[status] || 'bg-muted-foreground/40'
+  const label = {
+    healthy: latencyMs != null ? `Healthy · ${latencyMs}ms` : 'Healthy',
+    degraded: latencyMs != null ? `Degraded · ${latencyMs}ms` : 'Degraded',
+    broken: 'Connection lost — click to re-check',
+    unknown: 'Pinging…',
+  }[status] || 'Unknown'
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        if (forceHealthRefresh) forceHealthRefresh()
+      }}
+      className="rounded p-0.5 hover:bg-accent"
+      title={label}
+    >
+      <span className={cn('inline-block h-2 w-2 shrink-0 rounded-full', colorClass)} />
+    </button>
   )
 }
