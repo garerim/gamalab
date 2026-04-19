@@ -4,6 +4,7 @@ import { format } from 'sql-formatter'
 import { Wand2, Copy, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store/appStore'
+import { useSchemaInfo } from '@/hooks/useSchemaInfo'
 
 loader.config({
   paths: {
@@ -32,8 +33,27 @@ const MONACO_OPTIONS = {
 
 export function QueryEditor({ onRun }) {
   const { currentQuery, setCurrentQuery, queryRunning, showToast, theme } = useAppStore()
+  const schemaInfo = useSchemaInfo()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
+  const schemaInfoRef = useRef([])
+  const completionDisposableRef = useRef(null)
+  const onRunRef = useRef(onRun)
+
+  useEffect(() => {
+    onRunRef.current = onRun
+  }, [onRun])
+
+  useEffect(() => {
+    schemaInfoRef.current = schemaInfo
+  }, [schemaInfo])
+
+  useEffect(() => {
+    return () => {
+      completionDisposableRef.current?.dispose?.()
+      completionDisposableRef.current = null
+    }
+  }, [])
 
   const handleMount = (editor, monaco) => {
     editorRef.current = editor
@@ -86,7 +106,7 @@ export function QueryEditor({ onRun }) {
       ],
       run: () => {
         const sql = editor.getModel().getValue()
-        onRun?.(sql)
+        onRunRef.current?.(sql)
       },
     })
 
@@ -95,6 +115,86 @@ export function QueryEditor({ onRun }) {
       label: 'Format SQL',
       keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
       run: () => formatSql(),
+    })
+
+    // Schema-aware SQL autocomplete — one provider registration that reads
+    // the latest schemaInfo via ref (so it stays fresh without re-registering)
+    completionDisposableRef.current?.dispose?.()
+    completionDisposableRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+      triggerCharacters: ['.', ' '],
+      provideCompletionItems: (model, position) => {
+        const info = schemaInfoRef.current || []
+        const word = model.getWordUntilPosition(position)
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        }
+
+        const lineContent = model.getLineContent(position.lineNumber)
+        const textBefore = lineContent.substring(0, position.column - 1)
+
+        // "table." → columns of that table only
+        const dotMatch = textBefore.match(/([a-zA-Z_][a-zA-Z0-9_]*)\.(\w*)$/)
+        if (dotMatch) {
+          const tableName = dotMatch[1]
+          const table = info.find(
+            (t) => t.name === tableName || `${t.schema}.${t.name}` === tableName
+          )
+          if (table) {
+            return {
+              suggestions: table.columns.map((c) => ({
+                label: c.name,
+                kind: monaco.languages.CompletionItemKind.Field,
+                detail: c.udt_name || c.type,
+                insertText: c.name,
+                range,
+                sortText: '0_' + c.name,
+              })),
+            }
+          }
+        }
+
+        // Detect whether user is in a table-position (FROM / JOIN / INTO / UPDATE / TABLE)
+        const textLower = textBefore
+        const wantsTable = /\b(from|join|into|update|table|truncate)\s+[a-zA-Z0-9_."]*$/i.test(
+          textLower
+        )
+
+        const suggestions = []
+        for (const t of info) {
+          const qualified = `${t.schema}.${t.name}`
+          suggestions.push({
+            label: t.name,
+            kind:
+              t.type === 'VIEW'
+                ? monaco.languages.CompletionItemKind.Interface
+                : monaco.languages.CompletionItemKind.Struct,
+            detail: `${qualified}${t.type === 'VIEW' ? ' · view' : ''}`,
+            insertText: t.name,
+            range,
+            sortText: (wantsTable ? '0_' : '2_') + t.name,
+          })
+        }
+        if (!wantsTable) {
+          // Column suggestions only when we're probably not typing a table
+          for (const t of info) {
+            for (const c of t.columns) {
+              suggestions.push({
+                label: c.name,
+                kind: monaco.languages.CompletionItemKind.Field,
+                detail: `${t.name}.${c.name} · ${c.udt_name || c.type}`,
+                insertText: c.name,
+                range,
+                sortText: '1_' + c.name,
+              })
+            }
+          }
+        }
+
+        return { suggestions }
+      },
     })
   }
 

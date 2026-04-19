@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FlaskConical, Github, ExternalLink } from 'lucide-react'
+import { Github, ExternalLink } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 import {
   Dialog,
   DialogContent,
@@ -35,7 +36,7 @@ export function AboutDialog() {
 
         <div className="flex flex-col items-center gap-3 py-4 text-center">
           <div className="relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-lab-blue/30 via-lab-green/20 to-lab-orange/20">
-            <FlaskConical className="h-10 w-10 text-lab-blue" />
+            <Logo className="h-12 w-12" />
             <span className="absolute -bottom-1 -right-1 text-2xl">🧪</span>
           </div>
           <div>

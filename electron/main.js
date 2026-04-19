@@ -21,12 +21,17 @@ const dbService = new DbService()
 let mainWindow = null
 
 function createWindow() {
+  const iconPath = isDev
+    ? path.join(__dirname, '..', 'public', 'logo.png')
+    : path.join(__dirname, '..', 'dist', 'logo.png')
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 640,
     title: 'GamaLab',
+    icon: iconPath,
     backgroundColor: '#0a0a0a',
     show: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
@@ -132,6 +137,10 @@ ipcMain.handle('db:transaction', async (_evt, id, statements) => {
 
 ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {
   return await dbService.exportRows(id, schema, table, options)
+})
+
+ipcMain.handle('db:list-schema-info', async (_evt, id) => {
+  return await dbService.listSchemaInfo(id)
 })
 
 ipcMain.handle('dialog:save-export', async (_evt, { defaultPath, content, format }) => {

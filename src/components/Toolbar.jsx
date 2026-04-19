@@ -1,6 +1,7 @@
-import { Plus, RefreshCw, Info, FlaskConical, Play, Database, Sun, Moon } from 'lucide-react'
+import { Plus, RefreshCw, Info, Play, Database, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Logo } from '@/components/Logo'
 import { useAppStore } from '@/store/appStore'
 import { useDocker } from '@/hooks/useDocker'
 import { useDatabase } from '@/hooks/useDatabase'
@@ -16,7 +17,7 @@ export function Toolbar({ onRunQuery }) {
     <div className="flex h-12 items-center justify-between border-b border-border bg-card px-3">
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 pr-2">
-          <FlaskConical className="h-5 w-5 text-lab-blue" />
+          <Logo className="h-6 w-6" />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">GamaLab</span>
             <span className="text-[10px] text-muted-foreground">Your Database Laboratory</span>

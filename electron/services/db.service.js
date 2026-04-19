@@ -288,6 +288,48 @@ class DbService {
     })
   }
 
+  async listSchemaInfo(id) {
+    const pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection')
+    const { rows } = await pool.query(
+      `SELECT
+         t.table_schema,
+         t.table_name,
+         t.table_type,
+         c.column_name,
+         c.data_type,
+         c.udt_name,
+         c.ordinal_position
+       FROM information_schema.tables t
+       LEFT JOIN information_schema.columns c
+         ON c.table_schema = t.table_schema
+         AND c.table_name = t.table_name
+       WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
+         AND t.table_schema NOT LIKE 'pg_%'
+       ORDER BY t.table_schema, t.table_name, c.ordinal_position NULLS LAST`
+    )
+    const tableMap = new Map()
+    for (const row of rows) {
+      const key = `${row.table_schema}.${row.table_name}`
+      if (!tableMap.has(key)) {
+        tableMap.set(key, {
+          schema: row.table_schema,
+          name: row.table_name,
+          type: row.table_type === 'VIEW' ? 'VIEW' : 'TABLE',
+          columns: [],
+        })
+      }
+      if (row.column_name) {
+        tableMap.get(key).columns.push({
+          name: row.column_name,
+          type: row.data_type,
+          udt_name: row.udt_name,
+        })
+      }
+    }
+    return Array.from(tableMap.values())
+  }
+
   async exportRows(id, schema, table, { filters = [], orderBy = null, limit = null } = {}) {
     const pool = this.pools.get(id)
     if (!pool) throw new Error('No active connection')

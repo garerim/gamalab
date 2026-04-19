@@ -118,6 +118,10 @@ export const useAppStore = create((set, get) => ({
     set({ theme })
     if (typeof document !== 'undefined') {
       document.documentElement.classList.toggle('dark', theme === 'dark')
+      const favicon = document.getElementById('favicon')
+      if (favicon) {
+        favicon.href = theme === 'dark' ? '/logo-white.png' : '/logo-dark.png'
+      }
     }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('gamalab-theme', theme)

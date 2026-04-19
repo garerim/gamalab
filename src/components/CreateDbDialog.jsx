@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { FlaskConical, Loader2, Database } from 'lucide-react'
+import { Loader2, Database } from 'lucide-react'
+import { Logo } from '@/components/Logo'
 import {
   Dialog,
   DialogContent,
@@ -106,7 +107,7 @@ export function CreateDbDialog() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5 text-lab-blue" />
+            <Logo className="h-5 w-5" />
             New PostgreSQL Database
           </DialogTitle>
           <DialogDescription>
@@ -213,7 +214,7 @@ export function CreateDbDialog() {
               </>
             ) : (
               <>
-                <FlaskConical className="h-4 w-4" />
+                <Logo className="h-4 w-4" />
                 Create & Connect
               </>
             )}
