@@ -11,10 +11,84 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "build": "vite build",
+    "gen-icons": "electron-icon-builder --input=src/assets/logo-white.png --output=build",
     "package": "npm run build && electron-builder",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",
-    "package:linux": "npm run build && electron-builder --linux"
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:all": "npm run build && electron-builder -mwl"
+  },
+  "build": {
+    "appId": "com.gamalab.app",
+    "productName": "GamaLab",
+    "copyright": "Copyright © ${author}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!node_modules/**/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!node_modules/**/{test,__tests__,tests,powered-test,example,examples}",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
+    ],
+    "extraResources": [
+      { "from": "public/logo-white.png", "to": "logo-white.png" },
+      { "from": "public/logo-dark.png", "to": "logo-dark.png" }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/dockerode/**",
+      "node_modules/docker-modem/**",
+      "node_modules/ssh2/**"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icons/win/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GamaLab",
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "build/icons/mac/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "icon": "build/icons/png",
+      "category": "Development",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
@@ -46,6 +120,7 @@
     "cross-env": "^7.0.3",
     "electron": "^28.2.0",
     "electron-builder": "^24.9.1",
+    "electron-icon-builder": "^2.0.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "vite": "^5.1.0",

@@ -86,9 +86,12 @@ function migratePlaintextPasswords() {
 let mainWindow = null
 
 function createWindow() {
+  // In dev, read the logo from the source public/ folder.
+  // In prod, Vite copies public/* into dist/ during `npm run build`, and dist/
+  // is bundled into the asar archive. Electron can read icons from within asar.
   const iconPath = isDev
-    ? path.join(__dirname, '..', 'public', 'logo.png')
-    : path.join(__dirname, '..', 'dist', 'logo.png')
+    ? path.join(__dirname, '..', 'public', 'logo-white.png')
+    : path.join(__dirname, '..', 'dist', 'logo-white.png')
 
   mainWindow = new BrowserWindow({
     width: 1400,
