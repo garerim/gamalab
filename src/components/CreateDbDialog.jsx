@@ -87,6 +87,8 @@ export function CreateDbDialog() {
     try {
       const container = await createContainer(form)
       await connect({
+        kind: 'docker',
+        containerId: container.id,
         name: container.name,
         host: '127.0.0.1',
         port: container.port,

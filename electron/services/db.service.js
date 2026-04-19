@@ -18,16 +18,30 @@ class DbService {
       await this.disconnect(id)
     }
 
+    const sslMode = config.sslMode || 'disable'
+    let sslConfig
+    if (sslMode === 'require') {
+      sslConfig = { rejectUnauthorized: false }
+    } else if (sslMode === 'verify-full') {
+      sslConfig = { rejectUnauthorized: true }
+    } else if (sslMode === 'prefer') {
+      // pg lib falls back to non-SSL if SSL fails
+      sslConfig = { rejectUnauthorized: false }
+    } else {
+      sslConfig = false
+    }
+
     const pool = new Pool({
       host: config.host || '127.0.0.1',
       port: config.port || 5432,
       user: config.user || 'postgres',
       password: config.password || '',
       database: config.database || 'postgres',
+      ssl: sslConfig,
       max: 5,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
-      statement_timeout: 60000,
+      connectionTimeoutMillis: Number(config.connectionTimeoutMs) || 10000,
+      statement_timeout: Number(config.statementTimeoutMs) || 60000,
     })
 
     try {
@@ -453,11 +467,37 @@ class DbService {
 
   _friendlyError(err) {
     const msg = err?.message || String(err)
+    if (err?.code === 'ENOTFOUND' || /ENOTFOUND/.test(msg)) {
+      const host = err?.hostname || (msg.match(/ENOTFOUND (\S+)/) || [])[1] || 'host'
+      let hint = `Cannot resolve host "${host}".`
+      if (/supabase\.co$/i.test(host) && !/pooler\./i.test(host)) {
+        hint +=
+          ' Supabase direct hosts are IPv6-only on free tier — use the Session Pooler URL (host: aws-X-<region>.pooler.supabase.com, port 6543, user postgres.<project_ref>).'
+      } else {
+        hint += ' Check the hostname, your DNS, or your network (IPv6 only?).'
+      }
+      return hint
+    }
+    if (err?.code === 'ETIMEDOUT' || /ETIMEDOUT|timeout/i.test(msg)) {
+      return 'Connection timed out. The host is unreachable or a firewall is blocking the port.'
+    }
     if (err?.code === 'ECONNREFUSED') {
-      return 'Connection refused. Is the PostgreSQL container running?'
+      return 'Connection refused. The server is not accepting connections on this port (container stopped? wrong port?).'
+    }
+    if (err?.code === 'ECONNRESET' || /ECONNRESET/.test(msg)) {
+      return 'Connection reset. The server closed the connection unexpectedly (often an SSL mismatch).'
+    }
+    if (/self[- ]signed certificate|SELF_SIGNED_CERT_IN_CHAIN|unable to verify the first certificate/i.test(msg)) {
+      return 'SSL certificate could not be verified. Try SSL mode "Require" instead of "Verify full".'
+    }
+    if (/no pg_hba.conf entry|SSL connection is required/i.test(msg)) {
+      return 'The server requires SSL. Switch SSL mode to "Require" or "Verify full".'
     }
     if (err?.code === '28P01') {
       return 'Authentication failed. Check your user and password.'
+    }
+    if (err?.code === '28000') {
+      return 'Authentication method not allowed. Check pg_hba or SSL requirements.'
     }
     if (err?.code === '3D000') {
       return `Database does not exist: ${err.message}`

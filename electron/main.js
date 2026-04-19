@@ -4,6 +4,7 @@ const fs = require('fs/promises')
 const Store = require('electron-store')
 const DockerService = require('./services/docker.service')
 const DbService = require('./services/db.service')
+const credentialStore = require('./services/credentialStore.service')
 
 const isDev = process.env.NODE_ENV === 'development'
 const store = new Store({
@@ -17,6 +18,70 @@ const store = new Store({
 
 const dockerService = new DockerService()
 const dbService = new DbService()
+
+/**
+ * Transparently encrypt `password` fields on connection entries when writing,
+ * and decrypt `password_enc` back to `password` when reading. The renderer
+ * always sees plaintext in memory; the on-disk JSON only holds the encrypted
+ * base64 blob.
+ */
+function encryptConnectionsForStorage(connections) {
+  if (!Array.isArray(connections)) return connections
+  return connections.map((c) => {
+    if (!c || typeof c !== 'object') return c
+    const out = { ...c }
+    if (typeof out.password === 'string' && out.password.length > 0) {
+      const enc = credentialStore.encrypt(out.password)
+      if (enc) {
+        out.password_enc = enc
+        delete out.password
+      } else {
+        // Encryption unavailable — leave plaintext and flag it so we can warn
+        out.password_unencrypted = true
+      }
+    }
+    return out
+  })
+}
+
+function decryptConnectionsForRenderer(connections) {
+  if (!Array.isArray(connections)) return connections
+  return connections.map((c) => {
+    if (!c || typeof c !== 'object') return c
+    const out = { ...c }
+    if (typeof out.password_enc === 'string' && !out.password) {
+      const dec = credentialStore.decrypt(out.password_enc)
+      out.password = dec || ''
+    }
+    delete out.password_enc
+    return out
+  })
+}
+
+/**
+ * One-shot migration at boot: if any persisted connection still has a
+ * plaintext `password`, encrypt it in place and save.
+ */
+function migratePlaintextPasswords() {
+  try {
+    const connections = store.get('connections') || []
+    const needsMigration = connections.some(
+      (c) => typeof c?.password === 'string' && c.password.length > 0 && !c.password_enc
+    )
+    if (!needsMigration) return
+    if (!credentialStore.isAvailable()) {
+      console.warn(
+        '[credentials] safeStorage unavailable — passwords will remain in plaintext on disk.'
+      )
+      return
+    }
+    const migrated = encryptConnectionsForStorage(connections)
+    store.set('connections', migrated)
+    console.log(`[credentials] Encrypted ${migrated.length} connection(s) on disk.`)
+  } catch (err) {
+    console.error('[credentials] Migration failed:', err)
+  }
+}
 
 let mainWindow = null
 
@@ -65,6 +130,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  migratePlaintextPasswords()
   createWindow()
 
   app.on('activate', () => {
@@ -196,8 +262,19 @@ ipcMain.handle('db:browse-table', async (_evt, id, schema, table, options) => {
 })
 
 // ============ IPC: Config/Store ============
-ipcMain.handle('store:get', (_evt, key) => store.get(key))
-ipcMain.handle('store:set', (_evt, key, value) => store.set(key, value))
+ipcMain.handle('credentials:is-encrypted', () => credentialStore.isAvailable())
+
+ipcMain.handle('store:get', (_evt, key) => {
+  const value = store.get(key)
+  if (key === 'connections') return decryptConnectionsForRenderer(value)
+  return value
+})
+ipcMain.handle('store:set', (_evt, key, value) => {
+  if (key === 'connections') {
+    return store.set(key, encryptConnectionsForStorage(value))
+  }
+  return store.set(key, value)
+})
 ipcMain.handle('store:delete', (_evt, key) => store.delete(key))
 
 // ============ IPC: System ============

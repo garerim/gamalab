@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Github, ExternalLink } from 'lucide-react'
+import { Github, ExternalLink, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { Logo } from '@/components/Logo'
 import {
   Dialog,
@@ -16,11 +16,13 @@ export function AboutDialog() {
   const { aboutOpen, setAboutOpen } = useAppStore()
   const [version, setVersion] = useState('')
   const [platform, setPlatform] = useState('')
+  const [credsEncrypted, setCredsEncrypted] = useState(null)
 
   useEffect(() => {
     if (aboutOpen) {
       window.gamalab.app.version().then(setVersion).catch(() => {})
       window.gamalab.app.platform().then(setPlatform).catch(() => {})
+      window.gamalab.credentials?.isEncrypted?.().then(setCredsEncrypted).catch(() => {})
     }
   }, [aboutOpen])
 
@@ -54,6 +56,33 @@ export function AboutDialog() {
             <span>·</span>
             <span>Electron + React</span>
           </div>
+
+          {credsEncrypted !== null && (
+            <div
+              className={
+                credsEncrypted
+                  ? 'mt-1 inline-flex items-center gap-1.5 text-[11px] text-lab-green'
+                  : 'mt-1 inline-flex items-center gap-1.5 text-[11px] text-lab-orange'
+              }
+              title={
+                credsEncrypted
+                  ? 'Connection passwords are encrypted using the OS keyring.'
+                  : 'OS keyring unavailable — passwords are stored in plaintext.'
+              }
+            >
+              {credsEncrypted ? (
+                <>
+                  <ShieldCheck className="h-3 w-3" />
+                  Credentials encrypted via OS keyring
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-3 w-3" />
+                  Credentials stored in plaintext (OS keyring unavailable)
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter className="sm:justify-center">

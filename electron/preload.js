@@ -38,6 +38,9 @@ contextBridge.exposeInMainWorld('gamalab', {
     set: (key, value) => ipcRenderer.invoke('store:set', key, value),
     delete: (key) => ipcRenderer.invoke('store:delete', key),
   },
+  credentials: {
+    isEncrypted: () => ipcRenderer.invoke('credentials:is-encrypted'),
+  },
   app: {
     version: () => ipcRenderer.invoke('app:version'),
     platform: () => ipcRenderer.invoke('app:platform'),

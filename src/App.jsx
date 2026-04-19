@@ -7,6 +7,7 @@ import { QueryEditor } from '@/components/QueryEditor'
 import { ResultsTable } from '@/components/ResultsTable'
 import { TableBrowser } from '@/components/TableBrowser'
 import { CreateDbDialog } from '@/components/CreateDbDialog'
+import { ConnectRemoteDialog } from '@/components/ConnectRemoteDialog'
 import { NewLogicalDbDialog } from '@/components/NewLogicalDbDialog'
 import { CreateTableDialog } from '@/components/CreateTableDialog'
 import { EditTableDialog } from '@/components/EditTableDialog'
@@ -64,6 +65,7 @@ export default function App() {
         <StatusBar />
 
         <CreateDbDialog />
+        <ConnectRemoteDialog />
         <NewLogicalDbDialog />
         <CreateTableDialog />
         <EditTableDialog />
