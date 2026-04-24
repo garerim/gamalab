@@ -18,6 +18,7 @@ function formatRowCount(n, isEstimate) {
 function TableNodeInner({ data, selected }) {
   const { schema, name, columns, indexes, rowCount, isEstimate } = data
   const setActiveTable = useAppStore((s) => s.setActiveTable)
+  const setSidebarTab = useAppStore((s) => s.setSidebarTab)
   const hue = schemaHue(schema)
   const borderColor = `hsl(${hue} 60% 55%)`
 
@@ -48,6 +49,7 @@ function TableNodeInner({ data, selected }) {
             onClick={(e) => {
               e.stopPropagation()
               setActiveTable({ schema, name })
+              setSidebarTab('tables')
             }}
             onPointerDown={(e) => e.stopPropagation()}
             className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
