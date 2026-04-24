@@ -2,6 +2,17 @@ const { Pool } = require('pg')
 const crypto = require('crypto')
 const logger = require('./logger.service')
 
+function decodeFkAction(code) {
+  switch (code) {
+    case 'a': return 'NO ACTION'
+    case 'r': return 'RESTRICT'
+    case 'c': return 'CASCADE'
+    case 'n': return 'SET NULL'
+    case 'd': return 'SET DEFAULT'
+    default: return 'NO ACTION'
+  }
+}
+
 class DbService {
   constructor() {
     this.pools = new Map()
@@ -437,6 +448,202 @@ class DbService {
       }
     }
     return Array.from(tableMap.values())
+  }
+
+  /**
+   * One-shot schema dump used by the Schema Diagram view.
+   * Returns tables + columns + PK/UQ/FK flags + indexes + row counts.
+   *
+   * @param {string} id - connection id
+   * @param {{ exactCounts?: boolean }} opts
+   * @returns {Promise<{tables: Array, columns: Array, indexes: Array}>}
+   */
+  async listFullSchema(id, { exactCounts = false } = {}) {
+    const pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection')
+
+    // Run all metadata queries in parallel — they're independent.
+    const [tablesRes, columnsRes, pksRes, fksRes, uqsRes, indexesRes, estCountsRes] =
+      await Promise.all([
+        // 1) Tables (user schemas only)
+        pool.query(
+          `SELECT schemaname AS schema, tablename AS name
+           FROM pg_tables
+           WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+             AND schemaname NOT LIKE 'pg_%'
+           ORDER BY schemaname, tablename`
+        ),
+        // 2) Columns with type info
+        pool.query(
+          `SELECT
+             c.table_schema AS schema,
+             c.table_name   AS table_name,
+             c.column_name  AS name,
+             c.data_type    AS data_type,
+             c.udt_name     AS udt_name,
+             c.is_nullable = 'YES' AS nullable,
+             c.column_default AS default_value,
+             c.character_maximum_length AS max_length,
+             c.ordinal_position AS position
+           FROM information_schema.columns c
+           JOIN information_schema.tables t
+             ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+           WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
+             AND c.table_schema NOT LIKE 'pg_%'
+             AND t.table_type = 'BASE TABLE'
+           ORDER BY c.table_schema, c.table_name, c.ordinal_position`
+        ),
+        // 3) Primary keys
+        pool.query(
+          `SELECT tns.nspname AS schema, t.relname AS table_name, a.attname AS column_name
+           FROM pg_constraint con
+           JOIN pg_class t ON t.oid = con.conrelid
+           JOIN pg_namespace tns ON tns.oid = t.relnamespace
+           JOIN unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) ON true
+           JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+           WHERE con.contype = 'p'
+             AND tns.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND tns.nspname NOT LIKE 'pg_%'`
+        ),
+        // 4) Foreign keys (single-column; composite rendered as single edge on 1st col)
+        pool.query(
+          `SELECT
+             tns.nspname AS schema,
+             t.relname AS table_name,
+             a.attname AS column_name,
+             fns.nspname AS target_schema,
+             ft.relname AS target_table,
+             fa.attname AS target_column,
+             con.confdeltype AS on_delete,
+             con.confupdtype AS on_update
+           FROM pg_constraint con
+           JOIN pg_class t ON t.oid = con.conrelid
+           JOIN pg_namespace tns ON tns.oid = t.relnamespace
+           JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+           JOIN pg_class ft ON ft.oid = con.confrelid
+           JOIN pg_namespace fns ON fns.oid = ft.relnamespace
+           JOIN pg_attribute fa ON fa.attrelid = con.confrelid AND fa.attnum = con.confkey[1]
+           WHERE con.contype = 'f'
+             AND tns.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND tns.nspname NOT LIKE 'pg_%'`
+        ),
+        // 5) Unique constraints (single-column)
+        pool.query(
+          `SELECT tns.nspname AS schema, t.relname AS table_name, a.attname AS column_name
+           FROM pg_constraint con
+           JOIN pg_class t ON t.oid = con.conrelid
+           JOIN pg_namespace tns ON tns.oid = t.relnamespace
+           JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+           WHERE con.contype = 'u'
+             AND cardinality(con.conkey) = 1
+             AND tns.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND tns.nspname NOT LIKE 'pg_%'`
+        ),
+        // 6) Indexes — exclude those backing PK / UQ constraints
+        pool.query(
+          `SELECT
+             ns.nspname AS schema,
+             t.relname AS table_name,
+             i.relname AS name,
+             ix.indisunique AS is_unique,
+             ARRAY(
+               SELECT a.attname
+               FROM unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord)
+               JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+               ORDER BY k.ord
+             ) AS columns
+           FROM pg_index ix
+           JOIN pg_class i ON i.oid = ix.indexrelid
+           JOIN pg_class t ON t.oid = ix.indrelid
+           JOIN pg_namespace ns ON ns.oid = t.relnamespace
+           WHERE NOT ix.indisprimary
+             AND NOT EXISTS (
+               SELECT 1 FROM pg_constraint con
+               WHERE con.conindid = ix.indexrelid AND con.contype = 'u'
+             )
+             AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND ns.nspname NOT LIKE 'pg_%'`
+        ),
+        // 7) Estimated row counts (always — fast, used as fallback even when exactCounts=true)
+        pool.query(
+          `SELECT ns.nspname AS schema, c.relname AS name, c.reltuples::bigint AS est
+           FROM pg_class c
+           JOIN pg_namespace ns ON ns.oid = c.relnamespace
+           WHERE c.relkind = 'r'
+             AND ns.nspname NOT IN ('pg_catalog', 'information_schema')
+             AND ns.nspname NOT LIKE 'pg_%'`
+        ),
+      ])
+
+    // Build lookup sets for quick membership tests
+    const pkSet = new Set(pksRes.rows.map((r) => `${r.schema}.${r.table_name}.${r.column_name}`))
+    const uqSet = new Set(uqsRes.rows.map((r) => `${r.schema}.${r.table_name}.${r.column_name}`))
+    const fkMap = new Map()
+    for (const r of fksRes.rows) {
+      const key = `${r.schema}.${r.table_name}.${r.column_name}`
+      fkMap.set(key, {
+        targetTable: `${r.target_schema}.${r.target_table}`,
+        targetColumn: r.target_column,
+        onDelete: decodeFkAction(r.on_delete),
+        onUpdate: decodeFkAction(r.on_update),
+      })
+    }
+
+    // Row counts — estimate always available; exact overrides per-table if requested
+    const countByKey = new Map()
+    for (const r of estCountsRes.rows) {
+      countByKey.set(`${r.schema}.${r.name}`, { rowCount: Number(r.est), isEstimate: true })
+    }
+
+    if (exactCounts) {
+      // One UNION ALL query to get COUNT(*) for every table — single round-trip.
+      if (tablesRes.rows.length > 0) {
+        const parts = tablesRes.rows.map(
+          (t) =>
+            `SELECT ${pool.escapeLiteral ? pool.escapeLiteral(t.schema) : `'${t.schema}'`} AS s, ` +
+            `${pool.escapeLiteral ? pool.escapeLiteral(t.name) : `'${t.name}'`} AS n, ` +
+            `(SELECT COUNT(*)::bigint FROM ${this._qi(t.schema)}.${this._qi(t.name)}) AS c`
+        )
+        const { rows: exactRows } = await pool.query(parts.join(' UNION ALL '))
+        for (const r of exactRows) {
+          countByKey.set(`${r.s}.${r.n}`, { rowCount: Number(r.c), isEstimate: false })
+        }
+      }
+    }
+
+    // Shape the final response
+    const tables = tablesRes.rows.map((t) => {
+      const { rowCount = 0, isEstimate = true } = countByKey.get(`${t.schema}.${t.name}`) || {}
+      return { schema: t.schema, name: t.name, rowCount, isEstimate }
+    })
+
+    const columns = columnsRes.rows.map((c) => {
+      const key = `${c.schema}.${c.table_name}.${c.name}`
+      const fk = fkMap.get(key) || null
+      // Normalize type string: prefer udt for e.g. int4, varchar; append length when relevant
+      let type = c.udt_name || c.data_type
+      if (c.max_length && typeof c.max_length === 'number') type += `(${c.max_length})`
+      return {
+        tableKey: `${c.schema}.${c.table_name}`,
+        name: c.name,
+        type,
+        nullable: !!c.nullable,
+        default: c.default_value,
+        isPrimary: pkSet.has(key),
+        isUnique: uqSet.has(key),
+        foreignKey: fk,
+        maxLength: c.max_length || null,
+      }
+    })
+
+    const indexes = indexesRes.rows.map((i) => ({
+      tableKey: `${i.schema}.${i.table_name}`,
+      name: i.name,
+      columns: i.columns,
+      isUnique: !!i.is_unique,
+    }))
+
+    return { tables, columns, indexes }
   }
 
   async exportRows(id, schema, table, { filters = [], orderBy = null, limit = null } = {}) {

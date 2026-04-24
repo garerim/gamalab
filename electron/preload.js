@@ -35,6 +35,15 @@ contextBridge.exposeInMainWorld('gamalab', {
     browseTable: (id, schema, table, options) =>
       ipcRenderer.invoke('db:browse-table', id, schema, table, options),
   },
+  schema: {
+    getFull: (id, opts) => ipcRenderer.invoke('schema:get-full', id, opts),
+  },
+  layout: {
+    get: (connectionId, dbName) => ipcRenderer.invoke('layout:get', connectionId, dbName),
+    set: (connectionId, dbName, nodeId, pos) =>
+      ipcRenderer.invoke('layout:set', connectionId, dbName, nodeId, pos),
+    clear: (connectionId, dbName) => ipcRenderer.invoke('layout:clear', connectionId, dbName),
+  },
   store: {
     get: (key) => ipcRenderer.invoke('store:get', key),
     set: (key, value) => ipcRenderer.invoke('store:set', key, value),
@@ -51,6 +60,7 @@ contextBridge.exposeInMainWorld('gamalab', {
   dialog: {
     confirm: (options) => ipcRenderer.invoke('dialog:confirm', options),
     saveExport: (options) => ipcRenderer.invoke('dialog:save-export', options),
+    savePng: (options) => ipcRenderer.invoke('dialog:save-png', options),
   },
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),

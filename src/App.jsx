@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { QueryEditor } from '@/components/QueryEditor'
 import { ResultsTable } from '@/components/ResultsTable'
 import { TableBrowser } from '@/components/TableBrowser'
+import { SchemaDiagram } from '@/components/SchemaDiagram'
 import { CreateDbDialog } from '@/components/CreateDbDialog'
 import { ConnectRemoteDialog } from '@/components/ConnectRemoteDialog'
 import { NewLogicalDbDialog } from '@/components/NewLogicalDbDialog'
@@ -48,6 +49,7 @@ export default function App() {
   }
 
   const showBrowser = viewMode === 'browse' && activeTable
+  const showSchema = viewMode === 'schema'
 
   return (
     <TooltipProvider>
@@ -61,7 +63,9 @@ export default function App() {
             </Panel>
             <PanelResizeHandle className="w-1 bg-border transition-colors hover:bg-ring data-[resize-handle-active]:bg-ring" />
             <Panel defaultSize={78} minSize={40}>
-              {showBrowser ? (
+              {showSchema ? (
+                <SchemaDiagram />
+              ) : showBrowser ? (
                 <TableBrowser />
               ) : (
                 <PanelGroup direction="vertical" autoSaveId="gamalab-editor">
