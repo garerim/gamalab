@@ -122,6 +122,19 @@ export function useDocker() {
     })
   }, [checkDocker, refreshContainers])
 
+  // Live Docker health polling:
+  //   - When running: re-check status every 15s and refresh containers every 10s,
+  //     so the toolbar turns red within ~15s if Docker stops.
+  //   - When offline: keep polling at 30s to detect when Docker comes back up.
+  useEffect(() => {
+    const runningInterval = dockerStatus.running ? 15000 : 30000
+    const id = setInterval(async () => {
+      const next = await checkDocker()
+      if (next?.running) refreshContainers()
+    }, runningInterval)
+    return () => clearInterval(id)
+  }, [dockerStatus.running, checkDocker, refreshContainers])
+
   useEffect(() => {
     if (!dockerStatus.running) return
     pollingRef.current = setInterval(() => {
@@ -131,6 +144,23 @@ export function useDocker() {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
   }, [dockerStatus.running, refreshContainers])
+
+  // Toast on Docker status transitions so the user notices a drop
+  const prevRunningRef = useRef(null)
+  useEffect(() => {
+    if (!dockerStatus.checked) return
+    const prev = prevRunningRef.current
+    if (prev === null) {
+      prevRunningRef.current = dockerStatus.running
+      return
+    }
+    if (prev && !dockerStatus.running) {
+      showToast('Docker daemon stopped', 'warning')
+    } else if (!prev && dockerStatus.running) {
+      showToast('Docker daemon back online', 'success')
+    }
+    prevRunningRef.current = dockerStatus.running
+  }, [dockerStatus.checked, dockerStatus.running, showToast])
 
   return {
     dockerStatus,

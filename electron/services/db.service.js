@@ -1,5 +1,6 @@
 const { Pool } = require('pg')
 const crypto = require('crypto')
+const logger = require('./logger.service')
 
 class DbService {
   constructor() {

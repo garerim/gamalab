@@ -5,6 +5,7 @@ const Store = require('electron-store')
 const DockerService = require('./services/docker.service')
 const DbService = require('./services/db.service')
 const credentialStore = require('./services/credentialStore.service')
+const logger = require('./services/logger.service')
 
 const isDev = process.env.NODE_ENV === 'development'
 const store = new Store({
@@ -132,7 +133,17 @@ function createWindow() {
   })
 }
 
+// Capture crashes that would otherwise be invisible to the user — they
+// still kill the process but at least the log has a forensic trail.
+process.on('uncaughtException', (err) => {
+  logger.error('uncaughtException', err)
+})
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandledRejection', reason instanceof Error ? reason : { reason })
+})
+
 app.whenReady().then(() => {
+  logger.info('app ready', { platform: process.platform, version: app.getVersion() })
   migratePlaintextPasswords()
   createWindow()
 
@@ -307,3 +318,16 @@ ipcMain.handle('dialog:confirm', async (_evt, options) => {
 })
 
 ipcMain.handle('shell:open-external', (_evt, url) => shell.openExternal(url))
+ipcMain.handle('shell:show-log', () => {
+  const p = logger.getPath()
+  if (p) shell.showItemInFolder(p)
+})
+
+// Allow the renderer (ErrorBoundary, useDatabase, etc.) to push entries into
+// the same log file the main process writes to.
+ipcMain.handle('log:write', (_evt, level, msg, meta) => {
+  if (level === 'error') logger.error(msg, meta)
+  else if (level === 'warn') logger.warn(msg, meta)
+  else logger.info(msg, meta)
+})
+ipcMain.handle('log:path', () => logger.getPath())
