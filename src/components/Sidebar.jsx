@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Container, Database, History as HistoryIcon, Table as TableIcon } from 'lucide-react'
+import { Container, Database, History as HistoryIcon, Network, Table as TableIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
@@ -8,15 +8,25 @@ import { DockerManager } from './DockerManager'
 import { HistoryList } from './HistoryList'
 import { TablesList } from './TablesList'
 
+function SchemaTabInfo() {
+  return (
+    <div className="flex h-full flex-col p-3 text-xs text-muted-foreground">
+      <p>The schema diagram is displayed in the main panel.</p>
+      <p className="mt-2">Drag to arrange, click an FK to highlight, hover a table for the open button.</p>
+    </div>
+  )
+}
+
 const ALL_TABS = [
   { id: 'docker', label: 'Docker', icon: Container },
   { id: 'connections', label: 'Connections', icon: Database },
   { id: 'tables', label: 'Tables', icon: TableIcon, requiresConnection: true },
+  { id: 'schema', label: 'Schema', icon: Network, requiresConnection: true },
   { id: 'history', label: 'History', icon: HistoryIcon },
 ]
 
 export function Sidebar() {
-  const { sidebarTab, setSidebarTab } = useAppStore()
+  const { sidebarTab, setSidebarTab, setViewMode } = useAppStore()
   const { activeConnection } = useDatabase()
 
   const tabs = ALL_TABS.filter((t) => !t.requiresConnection || !!activeConnection)
@@ -37,7 +47,10 @@ export function Sidebar() {
           return (
             <button
               key={tab.id}
-              onClick={() => setSidebarTab(tab.id)}
+              onClick={() => {
+                setSidebarTab(tab.id)
+                if (tab.id === 'schema') setViewMode('schema')
+              }}
               title={tab.label}
               className={cn(
                 'flex h-10 w-10 items-center justify-center rounded-md transition-colors',
@@ -61,6 +74,7 @@ export function Sidebar() {
         <div className="min-h-0 flex-1 overflow-hidden">
           {sidebarTab === 'connections' && <ConnectionList />}
           {sidebarTab === 'tables' && <TablesList />}
+          {sidebarTab === 'schema' && <SchemaTabInfo />}
           {sidebarTab === 'docker' && <DockerManager />}
           {sidebarTab === 'history' && <HistoryList />}
         </div>
