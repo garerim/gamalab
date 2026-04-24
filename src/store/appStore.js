@@ -33,6 +33,12 @@ export const useAppStore = create((set, get) => ({
   viewMode: 'sql', // 'sql' | 'browse'
   activeTable: null, // { schema, name } | null
 
+  // Schema diagram
+  schemaFilter: 'all', // 'all' or a schema name like 'public'
+  selectedEdgeId: null, // id of the currently-highlighted FK edge, or null
+  exactRowCounts: false, // false = reltuples estimate, true = COUNT(*)
+  schemaRefreshToken: 0, // bump to force useFullSchema to re-fetch
+
   // Onboarding
   welcomeDialogOpen: false,
   onboardingCompleted: false, // hydrated from disk on initialize()
@@ -75,6 +81,8 @@ export const useAppStore = create((set, get) => ({
         viewMode: 'sql',
         queryResult: null,
         queryError: null,
+        schemaFilter: 'all',
+        selectedEdgeId: null,
       })
     } else {
       set({ activeConnectionId: id })
@@ -168,6 +176,11 @@ export const useAppStore = create((set, get) => ({
   setViewMode: (mode) => set({ viewMode: mode }),
   setActiveTable: (table) =>
     set({ activeTable: table, viewMode: table ? 'browse' : 'sql' }),
+
+  setSchemaFilter: (name) => set({ schemaFilter: name || 'all' }),
+  setSelectedEdgeId: (id) => set({ selectedEdgeId: id }),
+  toggleExactRowCounts: () => set({ exactRowCounts: !get().exactRowCounts }),
+  bumpSchemaRefresh: () => set({ schemaRefreshToken: get().schemaRefreshToken + 1 }),
 
   showToast: (message, type = 'info') => {
     const id = Date.now()
