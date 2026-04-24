@@ -36,3 +36,8 @@ out/
 
 # Runtime
 .cache/
+
+# Brainstorming session artifacts (visual companion)
+.superpowers/
+
+# Feature spec & plan artifacts are committed — only the session runtime is ignored

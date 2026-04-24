@@ -41,8 +41,14 @@
       "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
     ],
     "extraResources": [
-      { "from": "public/logo-white.png", "to": "logo-white.png" },
-      { "from": "public/logo-dark.png", "to": "logo-dark.png" }
+      {
+        "from": "public/logo-white.png",
+        "to": "logo-white.png"
+      },
+      {
+        "from": "public/logo-dark.png",
+        "to": "logo-dark.png"
+      }
     ],
     "asar": true,
     "asarUnpack": [
@@ -52,8 +58,18 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icons/win/icon.ico"
     },
@@ -71,8 +87,20 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "build/icons/mac/icon.icns",
       "category": "public.app-category.developer-tools",
@@ -82,8 +110,18 @@
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icons/png",
       "category": "Development",
@@ -91,6 +129,7 @@
     }
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.8",
     "@monaco-editor/react": "^4.6.0",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-label": "^2.0.2",
@@ -100,10 +139,12 @@
     "@radix-ui/react-switch": "^1.0.3",
     "@radix-ui/react-tabs": "^1.0.4",
     "@radix-ui/react-tooltip": "^1.0.7",
+    "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "dockerode": "^4.0.2",
     "electron-store": "^8.2.0",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.344.0",
     "pg": "^8.11.3",
     "react": "^18.2.0",
