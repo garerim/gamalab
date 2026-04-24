@@ -9,7 +9,16 @@ import { useDatabase } from '@/hooks/useDatabase'
 export function Toolbar({ onRunQuery }) {
   const { dockerStatus } = useDocker()
   const { activeConnection } = useDatabase()
-  const { setCreateDialogOpen, setAboutOpen, setWelcomeDialogOpen, queryRunning, currentQuery, theme, toggleTheme } = useAppStore()
+  const setCreateDialogOpen = useAppStore((s) => s.setCreateDialogOpen)
+  const setAboutOpen = useAppStore((s) => s.setAboutOpen)
+  const setWelcomeDialogOpen = useAppStore((s) => s.setWelcomeDialogOpen)
+  const theme = useAppStore((s) => s.theme)
+  const toggleTheme = useAppStore((s) => s.toggleTheme)
+  const activeTab = useAppStore((s) =>
+    s.queryTabs.find((t) => t.id === s.activeTabId) ?? null
+  )
+  const currentQuery = activeTab?.content ?? ''
+  const queryRunning = activeTab?.running ?? false
 
   const { refreshContainers } = useDocker()
 

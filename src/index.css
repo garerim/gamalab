@@ -152,3 +152,7 @@
   height: 1px;
   transform: translateY(-50%);
 }
+
+/* Hide scrollbar in QueryTabBar (WebKit + Firefox) */
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }

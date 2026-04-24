@@ -6,7 +6,11 @@ import { cn, formatDuration, timeAgo, truncate } from '@/lib/utils'
 import { useAppStore } from '@/store/appStore'
 
 export function HistoryList() {
-  const { queryHistory, clearHistory, setCurrentQuery, removeHistoryItem } = useAppStore()
+  const queryHistory = useAppStore((s) => s.queryHistory)
+  const clearHistory = useAppStore((s) => s.clearHistory)
+  const removeHistoryItem = useAppStore((s) => s.removeHistoryItem)
+  const updateTabContent = useAppStore((s) => s.updateTabContent)
+  const activeTabId = useAppStore((s) => s.activeTabId)
 
   if (queryHistory.length === 0) {
     return (
@@ -67,7 +71,9 @@ export function HistoryList() {
                     size="iconSm"
                     variant="ghost"
                     className="h-5 w-5"
-                    onClick={() => setCurrentQuery(item.sql)}
+                    onClick={() => {
+                      if (activeTabId) updateTabContent(activeTabId, item.sql)
+                    }}
                     title="Load in editor"
                   >
                     <PlayCircle className="h-3 w-3" />
@@ -85,7 +91,9 @@ export function HistoryList() {
               </div>
               <code
                 className="line-clamp-2 cursor-pointer font-mono text-[11px] leading-snug text-foreground/80"
-                onClick={() => setCurrentQuery(item.sql)}
+                onClick={() => {
+                  if (activeTabId) updateTabContent(activeTabId, item.sql)
+                }}
                 title={item.sql}
               >
                 {truncate(item.sql.replace(/\s+/g, ' '), 140)}

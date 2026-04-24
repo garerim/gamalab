@@ -3,18 +3,15 @@ import { useAppStore } from '@/store/appStore'
 import { isDangerousSql } from '@/lib/utils'
 
 export function useDatabase() {
-  const {
-    connections,
-    activeConnectionId,
-    addConnection,
-    removeConnection,
-    setActiveConnectionId,
-    setQueryResult,
-    setQueryError,
-    setQueryRunning,
-    addHistoryItem,
-    showToast,
-  } = useAppStore()
+  const connections = useAppStore((s) => s.connections)
+  const activeConnectionId = useAppStore((s) => s.activeConnectionId)
+  const addConnection = useAppStore((s) => s.addConnection)
+  const removeConnection = useAppStore((s) => s.removeConnection)
+  const setActiveConnectionId = useAppStore((s) => s.setActiveConnectionId)
+  const setTabResult = useAppStore((s) => s.setTabResult)
+  const setTabRunning = useAppStore((s) => s.setTabRunning)
+  const addHistoryItem = useAppStore((s) => s.addHistoryItem)
+  const showToast = useAppStore((s) => s.showToast)
 
   const activeConnection = connections.find((c) => c.id === activeConnectionId) || null
 
@@ -49,14 +46,28 @@ export function useDatabase() {
   )
 
   const runQuery = useCallback(
-    async (sql) => {
+    async (sql, { tabId: explicitTabId } = {}) => {
       if (!activeConnection) {
         showToast('Connect to a database first', 'warning')
+        return null
+      }
+      const tabId = explicitTabId ?? useAppStore.getState().activeTabId
+      if (!tabId) {
+        showToast('No active tab', 'error')
         return null
       }
       const trimmed = (sql || '').trim()
       if (!trimmed) {
         showToast('Query is empty', 'warning')
+        return null
+      }
+
+      // Guard: don't double-run on the same tab
+      const tabNow = useAppStore
+        .getState()
+        .queryTabs.find((t) => t.id === tabId)
+      if (tabNow?.running) {
+        showToast('Already running', 'info')
         return null
       }
 
@@ -69,41 +80,43 @@ export function useDatabase() {
         if (!ok) return null
       }
 
-      setQueryRunning(true)
-      setQueryError(null)
+      setTabRunning(tabId, true)
+      setTabResult(tabId, { result: null, error: null, duration: null })
       const start = Date.now()
       try {
         const result = await window.gamalab.db.query(activeConnection.id, trimmed)
-        setQueryResult(result)
+        const duration = result.duration ?? Date.now() - start
+        setTabResult(tabId, { result, error: null, duration })
         addHistoryItem({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           sql: trimmed,
           connection: activeConnection.id,
           connectionName: activeConnection.name || activeConnection.database,
-          duration: result.duration ?? Date.now() - start,
+          duration,
           rowCount: result.rowCount ?? (result.rows?.length || 0),
           timestamp: Date.now(),
           success: true,
         })
         return result
       } catch (err) {
-        setQueryError(err.message)
+        const duration = Date.now() - start
+        setTabResult(tabId, { result: null, error: err.message, duration })
         addHistoryItem({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           sql: trimmed,
           connection: activeConnection.id,
           connectionName: activeConnection.name || activeConnection.database,
-          duration: Date.now() - start,
+          duration,
           timestamp: Date.now(),
           success: false,
           error: err.message,
         })
         return null
       } finally {
-        setQueryRunning(false)
+        setTabRunning(tabId, false)
       }
     },
-    [activeConnection, addHistoryItem, setQueryError, setQueryResult, setQueryRunning, showToast]
+    [activeConnection, addHistoryItem, setTabResult, setTabRunning, showToast]
   )
 
   const listSchemas = useCallback(async () => {

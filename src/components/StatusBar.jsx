@@ -3,7 +3,11 @@ import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
 
 export function StatusBar() {
-  const { queryResult, queryHistory } = useAppStore()
+  const queryHistory = useAppStore((s) => s.queryHistory)
+  const activeTab = useAppStore((s) =>
+    s.queryTabs.find((t) => t.id === s.activeTabId) ?? null
+  )
+  const queryResult = activeTab?.result ?? null
   const { activeConnection } = useDatabase()
 
   return (

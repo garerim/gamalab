@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs/promises')
 const Store = require('electron-store')
@@ -144,6 +144,7 @@ process.on('unhandledRejection', (reason) => {
 })
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
   logger.info('app ready', { platform: process.platform, version: app.getVersion() })
   migratePlaintextPasswords()
   createWindow()

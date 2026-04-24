@@ -379,7 +379,6 @@ export function TableBrowser() {
     setActiveTable,
     setViewMode,
     showToast,
-    setCurrentQuery,
     setInsertRowDialogOpen,
     openEditTableDialog,
     bumpTablesRefresh,
@@ -387,6 +386,8 @@ export function TableBrowser() {
     consumePendingFilters,
     navigateToTableWithFilter,
   } = useAppStore()
+  const updateTabContent = useAppStore((s) => s.updateTabContent)
+  const activeTabId = useAppStore((s) => s.activeTabId)
   const { activeConnection } = useDatabase()
   const {
     columns,
@@ -577,7 +578,7 @@ export function TableBrowser() {
   const goToSql = () => {
     const order = orderBy ? ` ORDER BY "${orderBy.column}" ${orderBy.direction.toUpperCase()}` : ''
     const sql = `SELECT * FROM "${activeTable.schema}"."${activeTable.name}"${order} LIMIT ${pageSize} OFFSET ${page * pageSize};`
-    setCurrentQuery(sql)
+    if (activeTabId) updateTabContent(activeTabId, sql)
     setActiveTable(null)
   }
 

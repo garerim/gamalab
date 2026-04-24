@@ -27,7 +27,13 @@ function copyToClipboard(text) {
 }
 
 export function ResultsTable() {
-  const { queryResult, queryError, queryRunning, showToast } = useAppStore()
+  const activeTab = useAppStore((s) =>
+    s.queryTabs.find((t) => t.id === s.activeTabId) ?? null
+  )
+  const queryResult = activeTab?.result ?? null
+  const queryError = activeTab?.error ?? null
+  const queryRunning = activeTab?.running ?? false
+  const showToast = useAppStore((s) => s.showToast)
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState(null)
 

@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toolbar } from '@/components/Toolbar'
 import { Sidebar } from '@/components/Sidebar'
 import { QueryEditor } from '@/components/QueryEditor'
+import { QueryTabBar } from '@/components/QueryTabBar'
 import { ResultsTable } from '@/components/ResultsTable'
 import { TableBrowser } from '@/components/TableBrowser'
 import { SchemaDiagram } from '@/components/SchemaDiagram'
@@ -19,6 +20,7 @@ import { StatusBar } from '@/components/StatusBar'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
 import { useHealthCheck } from '@/hooks/useHealthCheck'
+import { useTabKeybindings } from '@/hooks/useTabKeybindings'
 
 export default function App() {
   const initialize = useAppStore((s) => s.initialize)
@@ -29,6 +31,7 @@ export default function App() {
   const setWelcomeDialogOpen = useAppStore((s) => s.setWelcomeDialogOpen)
   const { runQuery, activeConnection } = useDatabase()
   useHealthCheck()
+  useTabKeybindings()
 
   useEffect(() => {
     initialize()
@@ -70,7 +73,12 @@ export default function App() {
               ) : (
                 <PanelGroup direction="vertical" autoSaveId="gamalab-editor">
                   <Panel defaultSize={50} minSize={20}>
-                    <QueryEditor onRun={handleRunQuery} />
+                    <div className="flex h-full flex-col">
+                      <QueryTabBar />
+                      <div className="min-h-0 flex-1">
+                        <QueryEditor onRun={handleRunQuery} />
+                      </div>
+                    </div>
                   </Panel>
                   <PanelResizeHandle className="h-1 bg-border transition-colors hover:bg-ring data-[resize-handle-active]:bg-ring" />
                   <Panel defaultSize={50} minSize={20}>

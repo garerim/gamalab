@@ -4,7 +4,25 @@
       "Bash(npx electron-icon-builder *)",
       "Bash(grep -E \"^\\(dockerode|docker-modem|ssh2|cpu-features\\)$\")",
       "Bash(npm run *)",
-      "Bash(npx electron-builder *)"
+      "Bash(npx electron-builder *)",
+      "mcp__plugin_claude-mem_mcp-search__smart_outline",
+      "mcp__plugin_claude-mem_mcp-search__get_observations",
+      "Bash(node --input-type=module -e \"import\\('./src/lib/deriveTitle.js'\\).then\\(m => { const d = m.deriveTitle; const cases = [['-- cleanup soft deleted\\\\nDELETE FROM users','cleanup soft deleted'],['SELECT id FROM users WHERE deleted_at IS NULL','SELECT users'],['SELECT now\\(\\)','SELECT'],['',null],['-- \\\\nSELECT 1','SELECT'],['INSERT INTO orders \\(id\\) VALUES \\(1\\)','INSERT orders']]; let pass=true; for \\(const [input,expected] of cases\\) { const got = d\\(input\\); const ok = got === expected; if\\(!ok\\) pass=false; console.log\\(\\(ok?'PASS':'FAIL'\\)+': deriveTitle\\('+JSON.stringify\\(input\\)+'\\) => '+JSON.stringify\\(got\\)+' \\(expected '+JSON.stringify\\(expected\\)+'\\)'\\); } console.log\\('typeof:', typeof d\\); console.log\\(pass?'ALL PASS':'SOME FAILED'\\); }\\)\")",
+      "Bash(cp src/lib/deriveTitle.js /tmp/deriveTitle.mjs)",
+      "Bash(node --input-type=module -e \"import\\('file:///tmp/deriveTitle.mjs'\\).then\\(m => { const d = m.deriveTitle; const cases = [['-- cleanup soft deleted\\\\nDELETE FROM users','cleanup soft deleted'],['SELECT id FROM users WHERE deleted_at IS NULL','SELECT users'],['SELECT now\\(\\)','SELECT'],['',null],['-- \\\\nSELECT 1','SELECT'],['INSERT INTO orders \\(id\\) VALUES \\(1\\)','INSERT orders']]; let pass=true; for \\(const [input,expected] of cases\\) { const got = d\\(input\\); const ok = got === expected; if\\(!ok\\) pass=false; console.log\\(\\(ok?'PASS':'FAIL'\\)+': deriveTitle\\('+JSON.stringify\\(input\\)+'\\) => '+JSON.stringify\\(got\\)+' \\(expected '+JSON.stringify\\(expected\\)+'\\)'\\); } console.log\\('typeof:', typeof d\\); console.log\\(pass?'ALL PASS':'SOME FAILED'\\); }\\)\")",
+      "Bash(cp \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/lib/deriveTitle.js\" /tmp/deriveTitle.mjs)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(cygpath -w /tmp)",
+      "Read(//tmp/**)",
+      "Bash(cp /tmp/deriveTitle.mjs \"C:/Users/garer/AppData/Local/Temp/deriveTitle.mjs\")",
+      "Bash(npx vite *)",
+      "Bash(sed -n '1,10p' \"C:\\\\Users\\\\garer\\\\OneDrive\\\\Bureau\\\\Dev_FrontEnd\\\\Next\\\\gamalab\\\\src\\\\store\\\\appStore.js\")",
+      "Bash(sed -n '320,410p' \"C:\\\\Users\\\\garer\\\\OneDrive\\\\Bureau\\\\Dev_FrontEnd\\\\Next\\\\gamalab\\\\src\\\\store\\\\appStore.js\")",
+      "Bash(node -c electron/main.js)",
+      "Bash(sed -n '1,30p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/ResultsTable.jsx\")",
+      "Bash(sed -n '1,117p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/Toolbar.jsx\")",
+      "Bash(sed -n '1,33p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/StatusBar.jsx\")",
+      "Bash(sed -n '1,112p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/HistoryList.jsx\")"
     ]
   }
 }

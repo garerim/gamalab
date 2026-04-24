@@ -1,8 +1,12 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { deriveTitle } from '@/lib/deriveTitle'
 
 const MAX_HISTORY = 50
 
-export const useAppStore = create((set, get) => ({
+export const useAppStore = create(
+  persist(
+    (set, get) => ({
   // Docker state
   dockerStatus: { checked: false, running: false, installed: false },
   containers: [],
@@ -12,12 +16,23 @@ export const useAppStore = create((set, get) => ({
   connections: [],
   activeConnectionId: null,
 
-  // Query state
-  currentQuery: '-- Welcome to GamaLab 🧪\n-- Your Database Laboratory\n\nSELECT version();',
-  queryResult: null,
-  queryError: null,
-  queryRunning: false,
   queryHistory: [],
+
+  // --- Query tabs (new) ---
+  queryTabs: [
+    {
+      id: (globalThis.crypto?.randomUUID?.() || Math.random().toString(36)).slice(0, 8),
+      title: 'Welcome to GamaLab',
+      titleManual: false,
+      content: '-- Welcome to GamaLab 🧪\n-- Your Database Laboratory\n\nSELECT version();',
+      result: null,
+      error: null,
+      running: false,
+      duration: null,
+    },
+  ],
+  activeTabId: null, // set lazily in initialize() if unset
+  nextTabNumber: 2,  // "Query 1" is implicitly the first tab's fallback; next new tab = "Query 2"
 
   // UI state
   sidebarTab: 'connections',
@@ -79,20 +94,111 @@ export const useAppStore = create((set, get) => ({
         activeConnectionId: id,
         activeTable: null,
         viewMode: 'sql',
-        queryResult: null,
-        queryError: null,
         schemaFilter: 'all',
         selectedEdgeId: null,
       })
+      get().clearAllTabResults()
     } else {
       set({ activeConnectionId: id })
     }
   },
 
-  setCurrentQuery: (query) => set({ currentQuery: query }),
-  setQueryResult: (result) => set({ queryResult: result, queryError: null }),
-  setQueryError: (error) => set({ queryError: error, queryResult: null }),
-  setQueryRunning: (running) => set({ queryRunning: running }),
+  // --- Tab actions ---
+  createTab: ({ content = '' } = {}) => {
+    const id = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36)).slice(0, 8)
+    const n = get().nextTabNumber
+    const tab = {
+      id,
+      title: deriveTitle(content) || `Query ${n}`,
+      titleManual: false,
+      content,
+      result: null,
+      error: null,
+      running: false,
+      duration: null,
+    }
+    set({
+      queryTabs: [...get().queryTabs, tab],
+      activeTabId: id,
+      nextTabNumber: n + 1,
+    })
+    return id
+  },
+
+  closeTab: (id) => {
+    const tabs = get().queryTabs
+    if (tabs.length <= 1) return                 // guard: last tab can't close
+    const target = tabs.find((t) => t.id === id)
+    if (!target || target.running) return        // guard: don't close running
+    const idx = tabs.indexOf(target)
+    const nextTabs = tabs.filter((t) => t.id !== id)
+    // pick neighbour: previous if exists, else next
+    const neighbour = nextTabs[idx - 1] || nextTabs[idx] || nextTabs[0]
+    set({
+      queryTabs: nextTabs,
+      activeTabId:
+        get().activeTabId === id ? neighbour?.id ?? null : get().activeTabId,
+    })
+  },
+
+  setActiveTabId: (id) => {
+    if (get().queryTabs.some((t) => t.id === id)) set({ activeTabId: id })
+  },
+
+  updateTabContent: (id, content) => {
+    set({
+      queryTabs: get().queryTabs.map((t) => {
+        if (t.id !== id) return t
+        // If the user manually renamed, keep their title. Otherwise, try to
+        // re-derive from new content; if derivation yields nothing (e.g. the
+        // user cleared everything), preserve whatever title the tab already
+        // has. Never guess a "Query N" number — each tab's Query-N identity
+        // is locked in at creation time.
+        const nextTitle = t.titleManual
+          ? t.title
+          : (deriveTitle(content) || t.title)
+        return { ...t, content, title: nextTitle }
+      }),
+    })
+  },
+
+  renameTab: (id, title) => {
+    const trimmed = (title || '').trim()
+    if (!trimmed) return
+    set({
+      queryTabs: get().queryTabs.map((t) =>
+        t.id === id ? { ...t, title: trimmed, titleManual: true } : t
+      ),
+    })
+  },
+
+  setTabResult: (id, { result = null, error = null, duration = null } = {}) => {
+    set({
+      queryTabs: get().queryTabs.map((t) =>
+        t.id === id ? { ...t, result, error, duration } : t
+      ),
+    })
+  },
+
+  setTabRunning: (id, running) => {
+    set({
+      queryTabs: get().queryTabs.map((t) =>
+        t.id === id ? { ...t, running } : t
+      ),
+    })
+  },
+
+  clearAllTabResults: () => {
+    set({
+      queryTabs: get().queryTabs.map((t) => ({
+        ...t,
+        result: null,
+        error: null,
+        running: false,
+        duration: null,
+      })),
+    })
+  },
 
   addHistoryItem: (item) => {
     const history = [item, ...get().queryHistory].slice(0, MAX_HISTORY)
@@ -207,5 +313,79 @@ export const useAppStore = create((set, get) => ({
     } catch (err) {
       console.error('Failed to initialize store', err)
     }
+    // Ensure an active tab is selected
+    if (!get().activeTabId && get().queryTabs.length > 0) {
+      set({ activeTabId: get().queryTabs[0].id })
+    }
   },
-}))
+    }),
+    {
+      name: 'gamalab-app',
+      version: 1,
+      partialize: (state) => ({
+        queryTabs: state.queryTabs.map((t) => ({
+          id: t.id,
+          title: t.title,
+          titleManual: t.titleManual,
+          content: t.content,
+        })),
+        activeTabId: state.activeTabId,
+        nextTabNumber: state.nextTabNumber,
+      }),
+      migrate: (persisted, version) => {
+        if (!persisted) return persisted
+        // Defensive: future-version migrations hook here.
+        // v0 would carry a legacy `currentQuery` string; promote it to a tab.
+        if (version < 1 && typeof persisted.currentQuery === 'string') {
+          const { currentQuery, ...rest } = persisted
+          const id = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36)).slice(0, 8)
+          return {
+            ...rest,
+            queryTabs: [{
+              id,
+              title: 'Welcome to GamaLab',
+              titleManual: false,
+              content: currentQuery,
+            }],
+            activeTabId: id,
+            nextTabNumber: 2,
+          }
+        }
+        return persisted
+      },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        // Re-inflate volatile per-tab fields (they were stripped by partialize)
+        if (Array.isArray(state.queryTabs)) {
+          state.queryTabs = state.queryTabs.map((t) => ({
+            ...t,
+            result: null,
+            error: null,
+            running: false,
+            duration: null,
+          }))
+        }
+        // Safety: if somehow we persisted 0 tabs, seed one
+        if (!state.queryTabs || state.queryTabs.length === 0) {
+          const id = (globalThis.crypto?.randomUUID?.() || Math.random().toString(36)).slice(0, 8)
+          state.queryTabs = [{
+            id,
+            title: 'Query 1',
+            titleManual: false,
+            content: '',
+            result: null,
+            error: null,
+            running: false,
+            duration: null,
+          }]
+          state.activeTabId = id
+          state.nextTabNumber = 2
+        }
+        // Ensure activeTabId points to an existing tab
+        if (!state.queryTabs.some((t) => t.id === state.activeTabId)) {
+          state.activeTabId = state.queryTabs[0].id
+        }
+      },
+    }
+  )
+)

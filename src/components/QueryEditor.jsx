@@ -32,7 +32,12 @@ const MONACO_OPTIONS = {
 }
 
 export function QueryEditor({ onRun }) {
-  const { currentQuery, setCurrentQuery, queryRunning, showToast, theme } = useAppStore()
+  const activeTab = useAppStore((s) =>
+    s.queryTabs.find((t) => t.id === s.activeTabId) ?? null
+  )
+  const updateTabContent = useAppStore((s) => s.updateTabContent)
+  const showToast = useAppStore((s) => s.showToast)
+  const theme = useAppStore((s) => s.theme)
   const schemaInfo = useSchemaInfo()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
@@ -200,42 +205,47 @@ export function QueryEditor({ onRun }) {
 
   const formatSql = useCallback(() => {
     try {
-      const value = editorRef.current?.getValue() || currentQuery
+      const value = editorRef.current?.getValue() || activeTab?.content || ''
       const formatted = format(value, { language: 'postgresql', keywordCase: 'upper' })
       if (editorRef.current) {
         editorRef.current.setValue(formatted)
-      } else {
-        setCurrentQuery(formatted)
+      } else if (activeTab) {
+        updateTabContent(activeTab.id, formatted)
       }
     } catch (err) {
       showToast(`Format failed: ${err.message}`, 'error')
     }
-  }, [currentQuery, setCurrentQuery, showToast])
+  }, [activeTab, updateTabContent, showToast])
 
   const copyQuery = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(editorRef.current?.getValue() || currentQuery)
+      await navigator.clipboard.writeText(
+        editorRef.current?.getValue() || activeTab?.content || ''
+      )
       showToast('Query copied', 'info')
     } catch {
       showToast('Copy failed', 'error')
     }
-  }, [currentQuery, showToast])
+  }, [activeTab, showToast])
 
   const clearQuery = () => {
     if (editorRef.current) editorRef.current.setValue('')
-    setCurrentQuery('')
+    if (activeTab) updateTabContent(activeTab.id, '')
   }
 
   useEffect(() => {
     const handler = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault()
-        onRun?.(editorRef.current?.getValue() || currentQuery)
-      }
+      if (!((e.metaKey || e.ctrlKey) && e.key === 'Enter')) return
+      // Skip if Monaco already handled it via its registered action.
+      const active = document.activeElement
+      const monacoEl = editorRef.current?.getDomNode?.()
+      if (monacoEl && active && monacoEl.contains(active)) return
+      e.preventDefault()
+      onRun?.(editorRef.current?.getValue() ?? activeTab?.content ?? '')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [currentQuery, onRun])
+  }, [activeTab, onRun])
 
   useEffect(() => {
     if (monacoRef.current) {
@@ -266,12 +276,15 @@ export function QueryEditor({ onRun }) {
       <div className="min-h-0 flex-1">
         <Editor
           height="100%"
+          path={activeTab?.id ?? 'empty'}
           defaultLanguage="sql"
           theme={theme === 'dark' ? 'gamalab-dark' : 'gamalab-light'}
-          value={currentQuery}
-          onChange={(v) => setCurrentQuery(v ?? '')}
+          value={activeTab?.content ?? ''}
+          onChange={(v) => {
+            if (activeTab) updateTabContent(activeTab.id, v ?? '')
+          }}
           onMount={handleMount}
-          options={{ ...MONACO_OPTIONS, readOnly: queryRunning }}
+          options={{ ...MONACO_OPTIONS, readOnly: activeTab?.running ?? false }}
         />
       </div>
     </div>
