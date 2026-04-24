@@ -74,7 +74,7 @@ Add an ER-style schema diagram view to GamaLab. Users open a new "Schema" tab in
 - `electron/preload.js` — expose `window.gamalab.schema.*`, `window.gamalab.layout.*`, `window.gamalab.dialog.saveFile`
 - `src/components/Sidebar.jsx` — add "Schema" tab
 - `src/App.jsx` — route `viewMode === 'schema'` to `<SchemaDiagram />`
-- `src/store/appStore.js` — add `schema` to `viewMode` enum; add `schemaFilter`, `selectedEdgeId`, `exactRowCounts` state + setters
+- `src/store/appStore.js` — extend existing `viewMode` enum (currently `'sql' | 'browse'`) with `'schema'`; add `schemaFilter`, `selectedEdgeId`, `exactRowCounts` state + setters
 - `package.json` — add `@xyflow/react`, `@dagrejs/dagre`, `html-to-image`
 
 ## Backend
@@ -187,11 +187,7 @@ Custom node, VS Code dark-themed, with three sections:
 - Each column row renders a right-side `<Handle>` with `id = columnName` (for FK edges to anchor on the correct column)
 - FK target columns also render a left-side `<Handle>` with the same scheme
 - Border color derived from a deterministic hash of the schema name, mapped to an HSL hue (pastel saturation/lightness). Tables in the same schema share a hue; `public` is pinned to a neutral blue so the common case stays calm.
-- `↗` button stops propagation so react-flow's drag handler doesn't fire; onClick dispatches:
-  ```js
-  setActiveTable({ schema, name });
-  setViewMode('table');
-  ```
+- `↗` button stops propagation so react-flow's drag handler doesn't fire; onClick dispatches `setActiveTable({ schema, name })` — the existing store action already sets `viewMode` to `'browse'` internally, so no separate setViewMode call is needed.
 
 ### `FkEdge.jsx`
 
@@ -272,8 +268,8 @@ module.exports = {
 ## Store changes (`appStore.js`)
 
 ```js
-// extend viewMode union
-viewMode: 'query' | 'table' | 'schema'
+// extend viewMode union (currently 'sql' | 'browse')
+viewMode: 'sql' | 'browse' | 'schema'
 
 // new state
 schemaFilter: 'all',                 // or schema name like 'public'
@@ -286,7 +282,9 @@ setSelectedEdgeId(id)
 toggleExactRowCounts()
 ```
 
-When the user switches connections, the existing reset logic in the store is extended to clear `schemaFilter` and `selectedEdgeId`. `exactRowCounts` persists across connections (it's a UI preference).
+Existing `setActiveConnectionId` already resets `viewMode` to `'sql'` and `activeTable` to `null` on connection change — extend it to also clear `schemaFilter` (to `'all'`) and `selectedEdgeId` (to `null`). `exactRowCounts` persists across connections (it's a UI preference).
+
+The `↗` button on a table node calls the existing `setActiveTable({ schema, name })` action — which already flips `viewMode` to `'browse'` internally. No separate `setViewMode` call is needed.
 
 ## Interactions (locked)
 
