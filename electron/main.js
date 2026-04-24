@@ -5,6 +5,7 @@ const Store = require('electron-store')
 const DockerService = require('./services/docker.service')
 const DbService = require('./services/db.service')
 const credentialStore = require('./services/credentialStore.service')
+const layoutStore = require('./services/layoutStore.service')
 const logger = require('./services/logger.service')
 
 const isDev = process.env.NODE_ENV === 'development'
@@ -229,6 +230,38 @@ ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {
 
 ipcMain.handle('db:list-schema-info', async (_evt, id) => {
   return await dbService.listSchemaInfo(id)
+})
+
+ipcMain.handle('schema:get-full', async (_evt, id, opts) => {
+  return await dbService.listFullSchema(id, opts || {})
+})
+
+ipcMain.handle('layout:get', (_evt, connectionId, dbName) => {
+  return layoutStore.getPositions(connectionId, dbName)
+})
+
+ipcMain.handle('layout:set', (_evt, connectionId, dbName, nodeId, pos) => {
+  layoutStore.setPosition(connectionId, dbName, nodeId, pos)
+  return true
+})
+
+ipcMain.handle('layout:clear', (_evt, connectionId, dbName) => {
+  layoutStore.clearPositions(connectionId, dbName)
+  return true
+})
+
+ipcMain.handle('dialog:save-png', async (_evt, { defaultPath, dataUrl }) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: defaultPath || 'schema.png',
+    filters: [{ name: 'PNG Image', extensions: ['png'] }],
+  })
+  if (result.canceled || !result.filePath) return { canceled: true }
+  // dataUrl is a base64 "data:image/png;base64,..." string from html-to-image toPng()
+  const match = /^data:image\/png;base64,(.+)$/.exec(dataUrl || '')
+  if (!match) throw new Error('Invalid PNG data URL')
+  const buf = Buffer.from(match[1], 'base64')
+  await fs.writeFile(result.filePath, buf)
+  return { canceled: false, filePath: result.filePath }
 })
 
 ipcMain.handle('dialog:save-export', async (_evt, { defaultPath, content, format }) => {
