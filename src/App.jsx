@@ -15,12 +15,15 @@ import { CreateTableDialog } from '@/components/CreateTableDialog'
 import { EditTableDialog } from '@/components/EditTableDialog'
 import { WelcomeDialog } from '@/components/WelcomeDialog'
 import { AboutDialog } from '@/components/AboutDialog'
+import { SaveSnippetDialog } from '@/components/SaveSnippetDialog'
+import { SnippetPalette } from '@/components/SnippetPalette'
 import { Toast } from '@/components/Toast'
 import { StatusBar } from '@/components/StatusBar'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
 import { useHealthCheck } from '@/hooks/useHealthCheck'
 import { useTabKeybindings } from '@/hooks/useTabKeybindings'
+import { useSnippetKeybindings } from '@/hooks/useSnippetKeybindings'
 
 export default function App() {
   const initialize = useAppStore((s) => s.initialize)
@@ -32,6 +35,7 @@ export default function App() {
   const { runQuery, activeConnection } = useDatabase()
   useHealthCheck()
   useTabKeybindings()
+  useSnippetKeybindings()
 
   useEffect(() => {
     initialize()
@@ -99,6 +103,8 @@ export default function App() {
         <EditTableDialog />
         <WelcomeDialog />
         <AboutDialog />
+        <SaveSnippetDialog />
+        <SnippetPalette />
         <Toast />
       </div>
     </TooltipProvider>

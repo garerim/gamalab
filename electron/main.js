@@ -7,6 +7,7 @@ const DbService = require('./services/db.service')
 const credentialStore = require('./services/credentialStore.service')
 const layoutStore = require('./services/layoutStore.service')
 const logger = require('./services/logger.service')
+const snippetsService = require('./services/snippets.service')
 
 const isDev = process.env.NODE_ENV === 'development'
 const store = new Store({
@@ -315,6 +316,20 @@ ipcMain.handle('db:count-rows', async (_evt, id, schema, table, filters) => {
 
 ipcMain.handle('db:browse-table', async (_evt, id, schema, table, options) => {
   return await dbService.browseTable(id, schema, table, options)
+})
+
+// ============ IPC: Snippets ============
+ipcMain.handle('snippets:list', async () => {
+  return await snippetsService.list()
+})
+
+ipcMain.handle('snippets:save', async (_evt, snippet) => {
+  return await snippetsService.save(snippet)
+})
+
+ipcMain.handle('snippets:delete', async (_evt, id) => {
+  await snippetsService.remove(id)
+  return true
 })
 
 // ============ IPC: Config/Store ============

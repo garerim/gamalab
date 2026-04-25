@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import Editor, { loader } from '@monaco-editor/react'
 import { format } from 'sql-formatter'
-import { Wand2, Copy, Trash2 } from 'lucide-react'
+import { Wand2, Copy, Trash2, Bookmark } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store/appStore'
 import { useSchemaInfo } from '@/hooks/useSchemaInfo'
@@ -37,6 +37,7 @@ export function QueryEditor({ onRun }) {
   )
   const updateTabContent = useAppStore((s) => s.updateTabContent)
   const showToast = useAppStore((s) => s.showToast)
+  const openSaveSnippetDialog = useAppStore((s) => s.openSaveSnippetDialog)
   const theme = useAppStore((s) => s.theme)
   const schemaInfo = useSchemaInfo()
   const editorRef = useRef(null)
@@ -228,6 +229,15 @@ export function QueryEditor({ onRun }) {
     }
   }, [activeTab, showToast])
 
+  const saveAsSnippet = () => {
+    const sql = (editorRef.current?.getValue() ?? activeTab?.content ?? '').trim()
+    if (!sql) {
+      showToast('Write some SQL first, then save as snippet', 'warning')
+      return
+    }
+    openSaveSnippetDialog({ sql })
+  }
+
   const clearQuery = () => {
     if (editorRef.current) editorRef.current.setValue('')
     if (activeTab) updateTabContent(activeTab.id, '')
@@ -267,6 +277,14 @@ export function QueryEditor({ onRun }) {
           </Button>
           <Button size="iconSm" variant="ghost" onClick={copyQuery} title="Copy">
             <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            onClick={saveAsSnippet}
+            title="Save as snippet"
+          >
+            <Bookmark className="h-3.5 w-3.5" />
           </Button>
           <Button size="iconSm" variant="ghost" onClick={clearQuery} title="Clear">
             <Trash2 className="h-3.5 w-3.5" />

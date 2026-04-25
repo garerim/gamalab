@@ -5,6 +5,8 @@ import { useAppStore } from '@/store/appStore'
 export function useTabKeybindings() {
   useEffect(() => {
     const handler = (e) => {
+      // If the snippet palette is open, ignore tab keybindings to avoid surprising background mutations.
+      if (useAppStore.getState().snippetPaletteOpen) return
       const viewMode = useAppStore.getState().viewMode
       if (viewMode !== 'sql') return
 

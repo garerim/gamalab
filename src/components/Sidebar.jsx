@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
-import { Container, Database, History as HistoryIcon, Network, Table as TableIcon } from 'lucide-react'
+import { Bookmark, Container, Database, History as HistoryIcon, Network, Table as TableIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
 import { ConnectionList } from './ConnectionList'
 import { DockerManager } from './DockerManager'
 import { HistoryList } from './HistoryList'
+import { SnippetsList } from './SnippetsList'
 import { TablesList } from './TablesList'
 
 function SchemaTabInfo() {
@@ -21,6 +22,7 @@ const ALL_TABS = [
   { id: 'docker', label: 'Docker', icon: Container },
   { id: 'connections', label: 'Connections', icon: Database },
   { id: 'tables', label: 'Tables', icon: TableIcon, requiresConnection: true },
+  { id: 'snippets', label: 'Snippets', icon: Bookmark },
   { id: 'schema', label: 'Schema', icon: Network, requiresConnection: true },
   { id: 'history', label: 'History', icon: HistoryIcon },
 ]
@@ -74,6 +76,7 @@ export function Sidebar() {
         <div className="min-h-0 flex-1 overflow-hidden">
           {sidebarTab === 'connections' && <ConnectionList />}
           {sidebarTab === 'tables' && <TablesList />}
+          {sidebarTab === 'snippets' && <SnippetsList />}
           {sidebarTab === 'schema' && <SchemaTabInfo />}
           {sidebarTab === 'docker' && <DockerManager />}
           {sidebarTab === 'history' && <HistoryList />}

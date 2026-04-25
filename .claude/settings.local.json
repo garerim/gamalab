@@ -22,7 +22,9 @@
       "Bash(sed -n '1,30p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/ResultsTable.jsx\")",
       "Bash(sed -n '1,117p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/Toolbar.jsx\")",
       "Bash(sed -n '1,33p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/StatusBar.jsx\")",
-      "Bash(sed -n '1,112p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/HistoryList.jsx\")"
+      "Bash(sed -n '1,112p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/HistoryList.jsx\")",
+      "Bash(node -c electron/services/snippets.service.js)",
+      "Bash(node -c electron/preload.js)"
     ]
   }
 }

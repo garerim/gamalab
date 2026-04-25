@@ -18,6 +18,13 @@ export const useAppStore = create(
 
   queryHistory: [],
 
+  // --- Snippets state (mirrored from disk; source of truth = userData/snippets.json) ---
+  snippets: [],
+  saveSnippetDialogOpen: false,
+  saveSnippetDialogPrefilledSql: '',
+  editingSnippet: null,        // null = create mode; Snippet object = edit mode
+  snippetPaletteOpen: false,
+
   // --- Query tabs (new) ---
   queryTabs: [
     {
@@ -214,6 +221,33 @@ export const useAppStore = create(
     set({ queryHistory: history })
     window.gamalab.store.set('queryHistory', history)
   },
+
+  // --- Snippets actions ---
+  setSnippets: (snippets) => set({ snippets }),
+  addSnippet: (snippet) => set({ snippets: [...get().snippets, snippet] }),
+  updateSnippet: (id, patch) =>
+    set({
+      snippets: get().snippets.map((s) =>
+        s.id === id ? { ...s, ...patch } : s
+      ),
+    }),
+  removeSnippet: (id) =>
+    set({ snippets: get().snippets.filter((s) => s.id !== id) }),
+
+  openSaveSnippetDialog: ({ sql = '', editing = null } = {}) =>
+    set({
+      saveSnippetDialogOpen: true,
+      saveSnippetDialogPrefilledSql: editing?.sql ?? sql,
+      editingSnippet: editing,
+    }),
+  closeSaveSnippetDialog: () =>
+    set({
+      saveSnippetDialogOpen: false,
+      editingSnippet: null,
+      saveSnippetDialogPrefilledSql: '',
+    }),
+
+  setSnippetPaletteOpen: (open) => set({ snippetPaletteOpen: open }),
 
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setAboutOpen: (open) => set({ aboutOpen: open }),

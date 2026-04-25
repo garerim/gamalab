@@ -38,6 +38,11 @@ contextBridge.exposeInMainWorld('gamalab', {
   schema: {
     getFull: (id, opts) => ipcRenderer.invoke('schema:get-full', id, opts),
   },
+  snippets: {
+    list: () => ipcRenderer.invoke('snippets:list'),
+    save: (snippet) => ipcRenderer.invoke('snippets:save', snippet),
+    delete: (id) => ipcRenderer.invoke('snippets:delete', id),
+  },
   layout: {
     get: (connectionId, dbName) => ipcRenderer.invoke('layout:get', connectionId, dbName),
     set: (connectionId, dbName, nodeId, pos) =>
