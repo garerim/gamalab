@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('gamalab', {
     query: (id, sql, params) => ipcRenderer.invoke('db:query', id, sql, params),
     transaction: (id, statements) => ipcRenderer.invoke('db:transaction', id, statements),
     ping: (id) => ipcRenderer.invoke('db:ping', id),
+    test: (config) => ipcRenderer.invoke('db:test', config),
     exportRows: (id, schema, table, options) =>
       ipcRenderer.invoke('db:export-rows', id, schema, table, options),
     listSchemaInfo: (id) => ipcRenderer.invoke('db:list-schema-info', id),

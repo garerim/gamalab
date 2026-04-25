@@ -26,6 +26,15 @@ class DbService {
     return crypto.createHash('sha1').update(key).digest('hex').substring(0, 16)
   }
 
+  _buildSslConfig(sslMode) {
+    const mode = sslMode || 'disable'
+    if (mode === 'require') return { rejectUnauthorized: false }
+    if (mode === 'verify-full') return { rejectUnauthorized: true }
+    // pg lib falls back to non-SSL if SSL fails
+    if (mode === 'prefer') return { rejectUnauthorized: false }
+    return false
+  }
+
   async connect(config) {
     const id = config.id || this._connectionId(config)
 
@@ -33,18 +42,7 @@ class DbService {
       await this.disconnect(id)
     }
 
-    const sslMode = config.sslMode || 'disable'
-    let sslConfig
-    if (sslMode === 'require') {
-      sslConfig = { rejectUnauthorized: false }
-    } else if (sslMode === 'verify-full') {
-      sslConfig = { rejectUnauthorized: true }
-    } else if (sslMode === 'prefer') {
-      // pg lib falls back to non-SSL if SSL fails
-      sslConfig = { rejectUnauthorized: false }
-    } else {
-      sslConfig = false
-    }
+    const sslConfig = this._buildSslConfig(config.sslMode)
 
     const pool = new Pool({
       host: config.host || '127.0.0.1',
@@ -150,6 +148,38 @@ class DbService {
         duration: Date.now() - start,
         error: this._friendlyError(err),
       }
+    }
+  }
+
+  async testConnection(config) {
+    const start = Date.now()
+    // Same shape as connect(), but never stored in this.pools.
+    const pool = new Pool({
+      host: config.host,
+      port: Number(config.port),
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      ssl: this._buildSslConfig(config.sslMode),
+      connectionTimeoutMillis: 10000,
+      max: 1,
+      idleTimeoutMillis: 1,
+    })
+    try {
+      const { rows } = await pool.query(
+        'SELECT version() AS version, current_user AS "user", current_database() AS database'
+      )
+      return {
+        ok: true,
+        version: rows[0].version.split(' on ')[0],
+        user: rows[0].user,
+        database: rows[0].database,
+        latencyMs: Date.now() - start,
+      }
+    } catch (err) {
+      return { ok: false, error: this._friendlyError(err), latencyMs: Date.now() - start }
+    } finally {
+      await pool.end().catch(() => {})
     }
   }
 

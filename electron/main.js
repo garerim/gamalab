@@ -226,6 +226,10 @@ ipcMain.handle('db:ping', async (_evt, id) => {
   return await dbService.ping(id)
 })
 
+ipcMain.handle('db:test', async (_evt, config) => {
+  return await dbService.testConnection(config)
+})
+
 ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {
   return await dbService.exportRows(id, schema, table, options)
 })

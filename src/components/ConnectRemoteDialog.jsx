@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Loader2, Plug, Eye, EyeOff, Cable } from 'lucide-react'
+import { Loader2, Plug, Eye, EyeOff, Cable, CheckCircle2, XCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -113,6 +114,8 @@ export function ConnectRemoteDialog() {
   const [connStr, setConnStr] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
 
   useEffect(() => {
     if (connectRemoteDialogOpen) {
@@ -126,8 +129,17 @@ export function ConnectRemoteDialog() {
       setConnStr('')
       setSubmitting(false)
       setShowPassword(false)
+      setTestResult(null)
+      setTesting(false)
     }
   }, [connectRemoteDialogOpen])
+
+  // Clear test banner when test-relevant fields change.
+  // `name` and `connStr` are intentionally excluded — name is display-only,
+  // connStr's parser re-fills the relevant fields below (transitively triggering this effect).
+  useEffect(() => {
+    setTestResult(null)
+  }, [host, port, user, password, database, sslMode])
 
   const tryParseConnStr = () => {
     const parsed = parseConnectionString(connStr)
@@ -147,6 +159,36 @@ export function ConnectRemoteDialog() {
         : 'Parsed — fill in the password then connect',
       'info'
     )
+  }
+
+  const handleTest = async () => {
+    if (!host.trim()) {
+      showToast('Host is required', 'warning')
+      return
+    }
+    const portNum = Number(port)
+    if (!Number.isFinite(portNum) || portNum < 1 || portNum > 65535) {
+      showToast('Port must be between 1 and 65535', 'warning')
+      return
+    }
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await window.gamalab.db.test({
+        host: host.trim(),
+        port: portNum,
+        user: user.trim() || 'postgres',
+        password,
+        database: database.trim() || 'postgres',
+        sslMode,
+      })
+      setTestResult(result)
+    } catch (err) {
+      // Defensive — backend is contracted not to throw, but guard anyway
+      setTestResult({ ok: false, error: err.message })
+    } finally {
+      setTesting(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -184,7 +226,7 @@ export function ConnectRemoteDialog() {
   return (
     <Dialog
       open={connectRemoteDialogOpen}
-      onOpenChange={(o) => !submitting && setConnectRemoteDialogOpen(o)}
+      onOpenChange={(o) => !submitting && !testing && setConnectRemoteDialogOpen(o)}
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -320,15 +362,70 @@ export function ConnectRemoteDialog() {
           </div>
         </div>
 
+        {testResult && (
+          <div
+            className={cn(
+              'flex flex-col gap-1 rounded-md border p-3 text-sm',
+              testResult.ok
+                ? 'border-lab-green/30 bg-lab-green/10'
+                : 'border-destructive/30 bg-destructive/10'
+            )}
+          >
+            <div className="flex items-center gap-2 font-medium">
+              {testResult.ok ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-lab-green" />
+                  Connected in {testResult.latencyMs} ms
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  Connection failed
+                </>
+              )}
+            </div>
+            {testResult.ok ? (
+              <div className="text-xs text-muted-foreground">
+                {testResult.version} · user "{testResult.user}" · database "{testResult.database}"
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap break-words text-xs text-destructive">
+                {testResult.error}
+              </div>
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button
             variant="ghost"
             onClick={() => setConnectRemoteDialogOpen(false)}
-            disabled={submitting}
+            disabled={submitting || testing}
           >
             Cancel
           </Button>
-          <Button variant="lab" onClick={handleSubmit} disabled={submitting}>
+          <Button
+            variant="outline"
+            onClick={handleTest}
+            disabled={submitting || testing || !host.trim()}
+          >
+            {testing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Testing…
+              </>
+            ) : (
+              <>
+                <Cable className="h-4 w-4" />
+                Test connection
+              </>
+            )}
+          </Button>
+          <Button
+            variant="lab"
+            onClick={handleSubmit}
+            disabled={submitting || testing}
+          >
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
