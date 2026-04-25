@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store/appStore'
+import { confirm } from '@/lib/confirm'
 
 export function useDocker() {
   const {
@@ -95,12 +96,14 @@ export function useDocker() {
 
   const removeContainer = useCallback(
     async (id, removeVolume = false) => {
-      const confirmed = await window.gamalab.dialog.confirm({
+      const confirmed = await confirm({
         title: 'Delete container',
         message: 'Are you sure you want to delete this container?',
         detail: removeVolume
           ? 'This will permanently delete the container and its data volume.'
           : 'The container will be deleted, but the data volume will be preserved.',
+        variant: 'destructive',
+        confirmLabel: 'Delete',
       })
       if (!confirmed) return false
       try {

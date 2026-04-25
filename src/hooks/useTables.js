@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAppStore } from '@/store/appStore'
 import { useDatabase } from '@/hooks/useDatabase'
+import { confirm } from '@/lib/confirm'
 
 function quoteIdent(name) {
   return '"' + String(name).replace(/"/g, '""') + '"'
@@ -52,12 +53,14 @@ export function useTables() {
   const dropTable = useCallback(
     async (schema, name, { cascade = false } = {}) => {
       if (!activeConnection) return false
-      const ok = await window.gamalab.dialog.confirm({
+      const ok = await confirm({
         title: `Drop table "${name}"?`,
         message: `Permanently delete ${schema}.${name} and all its data?`,
         detail: cascade
           ? 'CASCADE: dependent objects (views, FKs) will also be dropped.'
           : 'This cannot be undone.',
+        variant: 'destructive',
+        confirmLabel: 'Drop table',
       })
       if (!ok) return false
       const sql = `DROP TABLE ${quoteIdent(schema)}.${quoteIdent(name)}${cascade ? ' CASCADE' : ''}`

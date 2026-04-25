@@ -1,6 +1,7 @@
 // src/hooks/useTabKeybindings.js
 import { useEffect } from 'react'
 import { useAppStore } from '@/store/appStore'
+import { confirm } from '@/lib/confirm'
 
 export function useTabKeybindings() {
   useEffect(() => {
@@ -34,15 +35,14 @@ export function useTabKeybindings() {
         // Empty content → close immediately; non-empty → confirm via same flow as × button
         const nonEmpty = (tab.content || '').trim().length > 0
         if (nonEmpty) {
-          window.gamalab.dialog
-            .confirm({
-              title: `Close "${tab.title}"?`,
-              message: 'You have unsaved SQL in this tab. Closing will discard it.',
-              detail: 'This cannot be undone.',
-            })
-            .then((ok) => {
-              if (ok) useAppStore.getState().closeTab(tab.id)
-            })
+          confirm({
+            title: `Close "${tab.title}"?`,
+            message: 'You have unsaved SQL in this tab. Closing will discard it.',
+            detail: 'This cannot be undone.',
+            confirmLabel: 'Close tab',
+          }).then((ok) => {
+            if (ok) useAppStore.getState().closeTab(tab.id)
+          })
         } else {
           state.closeTab(tab.id)
         }

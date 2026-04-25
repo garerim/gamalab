@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { useAppStore } from '@/store/appStore'
 import { cn } from '@/lib/utils'
+import { confirm } from '@/lib/confirm'
 
 export function QueryTabBar() {
   const queryTabs = useAppStore((s) => s.queryTabs)
@@ -45,10 +46,11 @@ export function QueryTabBar() {
     if (tab.running) return
     const nonEmpty = (tab.content || '').trim().length > 0
     if (nonEmpty && queryTabs.length > 1) {
-      const ok = await window.gamalab.dialog.confirm({
+      const ok = await confirm({
         title: `Close "${tab.title}"?`,
         message: 'You have unsaved SQL in this tab. Closing will discard it.',
         detail: 'This cannot be undone.',
+        confirmLabel: 'Close tab',
       })
       if (!ok) return
     }

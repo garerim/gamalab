@@ -63,7 +63,6 @@ contextBridge.exposeInMainWorld('gamalab', {
     name: () => ipcRenderer.invoke('app:name'),
   },
   dialog: {
-    confirm: (options) => ipcRenderer.invoke('dialog:confirm', options),
     saveExport: (options) => ipcRenderer.invoke('dialog:save-export', options),
     savePng: (options) => ipcRenderer.invoke('dialog:save-png', options),
   },

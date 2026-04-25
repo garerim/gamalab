@@ -26,6 +26,7 @@ import {
   debounce,
   schemaHue,
 } from '@/lib/schemaLayout'
+import { confirm } from '@/lib/confirm'
 
 const nodeTypes = { table: TableNode }
 const edgeTypes = { fk: FkEdge }
@@ -186,9 +187,10 @@ function SchemaDiagramInner() {
 
   const handleAutoLayout = useCallback(async () => {
     if (!layoutKey) return
-    const ok = await window.gamalab.dialog.confirm({
+    const ok = await confirm({
       title: 'Reset layout?',
       message: 'This will discard your manually arranged positions and re-run auto-layout.',
+      confirmLabel: 'Reset',
     })
     if (!ok) return
     const [connectionId, dbName] = layoutKey

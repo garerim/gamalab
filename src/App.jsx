@@ -17,6 +17,7 @@ import { WelcomeDialog } from '@/components/WelcomeDialog'
 import { AboutDialog } from '@/components/AboutDialog'
 import { SaveSnippetDialog } from '@/components/SaveSnippetDialog'
 import { SnippetPalette } from '@/components/SnippetPalette'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Toast } from '@/components/Toast'
 import { StatusBar } from '@/components/StatusBar'
 import { useAppStore } from '@/store/appStore'
@@ -105,6 +106,7 @@ export default function App() {
         <AboutDialog />
         <SaveSnippetDialog />
         <SnippetPalette />
+        <ConfirmDialog />
         <Toast />
       </div>
     </TooltipProvider>

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useAppStore } from '@/store/appStore'
 import { isDangerousSql } from '@/lib/utils'
+import { confirm } from '@/lib/confirm'
 
 export function useDatabase() {
   const connections = useAppStore((s) => s.connections)
@@ -72,10 +73,12 @@ export function useDatabase() {
       }
 
       if (isDangerousSql(trimmed)) {
-        const ok = await window.gamalab.dialog.confirm({
+        const ok = await confirm({
           title: 'Dangerous operation',
           message: 'This query may destroy data',
           detail: 'Contains DROP, TRUNCATE, or unconditional DELETE. Continue?',
+          variant: 'destructive',
+          confirmLabel: 'Run anyway',
         })
         if (!ok) return null
       }

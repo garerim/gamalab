@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useAppStore } from '@/store/appStore'
+import { confirm } from '@/lib/confirm'
 
 function newId() {
   return (globalThis.crypto?.randomUUID?.() || Math.random().toString(36)).slice(0, 8)
@@ -76,10 +77,12 @@ export function useSnippets() {
     async (id) => {
       const snippet = snippets.find((s) => s.id === id)
       if (!snippet) return false
-      const ok = await window.gamalab.dialog.confirm({
+      const ok = await confirm({
         title: `Delete "${snippet.name}"?`,
         message: 'This snippet will be permanently removed.',
         detail: 'This cannot be undone.',
+        variant: 'destructive',
+        confirmLabel: 'Delete',
       })
       if (!ok) return false
       try {

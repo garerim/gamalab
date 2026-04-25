@@ -353,19 +353,6 @@ ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('app:platform', () => process.platform)
 ipcMain.handle('app:name', () => 'GamaLab')
 
-ipcMain.handle('dialog:confirm', async (_evt, options) => {
-  const result = await dialog.showMessageBox(mainWindow, {
-    type: 'warning',
-    buttons: ['Cancel', 'Confirm'],
-    defaultId: 0,
-    cancelId: 0,
-    title: options.title || 'Confirm',
-    message: options.message || 'Are you sure?',
-    detail: options.detail,
-  })
-  return result.response === 1
-})
-
 ipcMain.handle('shell:open-external', (_evt, url) => shell.openExternal(url))
 ipcMain.handle('shell:show-log', () => {
   const p = logger.getPath()

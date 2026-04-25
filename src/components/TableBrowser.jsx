@@ -26,6 +26,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatDuration } from '@/lib/utils'
+import { confirm } from '@/lib/confirm'
 import { useAppStore } from '@/store/appStore'
 import { useTableBrowser } from '@/hooks/useTables'
 import { useDatabase } from '@/hooks/useDatabase'
@@ -504,10 +505,12 @@ export function TableBrowser() {
 
   const handleDeleteSelected = async () => {
     if (selected.size === 0 || !hasPK || !activeConnection || !activeTable) return
-    const ok = await window.gamalab.dialog.confirm({
+    const ok = await confirm({
       title: `Delete ${selected.size} row${selected.size === 1 ? '' : 's'}?`,
       message: `Permanently delete from ${activeTable.schema}.${activeTable.name}?`,
       detail: 'This cannot be undone.',
+      variant: 'destructive',
+      confirmLabel: 'Delete',
     })
     if (!ok) return
 
@@ -745,10 +748,12 @@ export function TableBrowser() {
 
   const handleDropTable = async () => {
     if (!activeConnection || !activeTable) return
-    const ok = await window.gamalab.dialog.confirm({
+    const ok = await confirm({
       title: `Drop table "${activeTable.name}"?`,
       message: `Permanently delete ${activeTable.schema}.${activeTable.name} and all its data?`,
       detail: 'This cannot be undone.',
+      variant: 'destructive',
+      confirmLabel: 'Drop table',
     })
     if (!ok) return
     const sql = `DROP TABLE ${quoteIdent(activeTable.schema)}.${quoteIdent(activeTable.name)}`

@@ -25,6 +25,9 @@ export const useAppStore = create(
   editingSnippet: null,        // null = create mode; Snippet object = edit mode
   snippetPaletteOpen: false,
 
+  // --- Confirm dialog (transient; payload is null when closed) ---
+  confirmDialog: null,
+
   // --- Query tabs (new) ---
   queryTabs: [
     {
@@ -248,6 +251,9 @@ export const useAppStore = create(
     }),
 
   setSnippetPaletteOpen: (open) => set({ snippetPaletteOpen: open }),
+
+  // --- Confirm dialog actions ---
+  setConfirmDialog: (payload) => set({ confirmDialog: payload }),
 
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setAboutOpen: (open) => set({ aboutOpen: open }),
