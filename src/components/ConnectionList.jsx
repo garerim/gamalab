@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Database, Plug, Unplug, Plus, CheckCircle2, Server, Cable, Container } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +11,35 @@ import { useAppStore } from '@/store/appStore'
 export function ConnectionList() {
   const { connections, activeConnectionId, activeConnection, setActiveConnectionId, connect, disconnect } = useDatabase()
   const { setCreateDialogOpen, setNewLogicalDbDialogOpen, setConnectRemoteDialogOpen, connectionHealth } = useAppStore()
+  const renameConnection = useAppStore((s) => s.renameConnection)
+
+  const [renamingId, setRenamingId] = useState(null)
+  const [draftName, setDraftName] = useState('')
+  const renameInputRef = useRef(null)
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [renamingId])
+
+  const beginRename = (conn) => {
+    setRenamingId(conn.id)
+    setDraftName(conn.name || conn.database || '')
+  }
+
+  const commitRename = () => {
+    if (!renamingId) return
+    renameConnection(renamingId, draftName)
+    setRenamingId(null)
+    setDraftName('')
+  }
+
+  const cancelRename = () => {
+    setRenamingId(null)
+    setDraftName('')
+  }
 
   if (connections.length === 0) {
     return (
@@ -86,7 +116,10 @@ export function ConnectionList() {
                   ? 'border-lab-blue bg-lab-blue/10'
                   : 'border-border bg-background hover:bg-accent/50'
               )}
-              onClick={() => setActiveConnectionId(conn.id)}
+              onClick={() => {
+                if (renamingId === conn.id) return
+                setActiveConnectionId(conn.id)
+              }}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
@@ -96,7 +129,39 @@ export function ConnectionList() {
                       isActive ? 'text-lab-blue' : 'text-muted-foreground'
                     )}
                   />
-                  <span className="truncate font-medium">{conn.name || conn.database}</span>
+                  {renamingId === conn.id ? (
+                    <input
+                      ref={renameInputRef}
+                      aria-label="Rename connection"
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          commitRename()
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          cancelRename()
+                        }
+                      }}
+                      onBlur={commitRename}
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                      className="min-w-0 flex-1 rounded-sm bg-transparent px-1 text-xs font-medium outline-none ring-1 ring-lab-blue/50"
+                      maxLength={80}
+                    />
+                  ) : (
+                    <span
+                      className="truncate font-medium"
+                      onDoubleClick={(e) => {
+                        e.stopPropagation()
+                        beginRename(conn)
+                      }}
+                      title="Double-click to rename"
+                    >
+                      {conn.name || conn.database}
+                    </span>
+                  )}
                   <Badge
                     variant="outline"
                     className="shrink-0 text-[9px] font-normal uppercase tracking-wider"

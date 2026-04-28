@@ -98,6 +98,16 @@ export const useAppStore = create(
     })
     window.gamalab.store.set('connections', connections)
   },
+  renameConnection: (id, name) => {
+    const trimmed = (name || '').trim()
+    const connections = get().connections.map((c) =>
+      c.id === id
+        ? { ...c, name: trimmed || undefined }
+        : c
+    )
+    set({ connections })
+    window.gamalab.store.set('connections', connections)
+  },
   setActiveConnectionId: (id) => {
     if (id !== get().activeConnectionId) {
       set({
