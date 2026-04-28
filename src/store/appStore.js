@@ -28,6 +28,10 @@ export const useAppStore = create(
   // --- Confirm dialog (transient; payload is null when closed) ---
   confirmDialog: null,
 
+  // --- Import CSV (transient; context is null when closed) ---
+  importCsvDialogOpen: false,
+  importCsvContext: null,
+
   // --- Query tabs (new) ---
   queryTabs: [
     {
@@ -264,6 +268,10 @@ export const useAppStore = create(
 
   // --- Confirm dialog actions ---
   setConfirmDialog: (payload) => set({ confirmDialog: payload }),
+
+  // --- Import CSV actions ---
+  setImportCsvDialogOpen: (open) => set({ importCsvDialogOpen: open }),
+  setImportCsvContext: (ctx) => set({ importCsvContext: ctx }),
 
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setAboutOpen: (open) => set({ aboutOpen: open }),

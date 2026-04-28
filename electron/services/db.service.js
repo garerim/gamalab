@@ -701,6 +701,53 @@ class DbService {
     }
   }
 
+  async importRows(id, schema, table, columns, rows) {
+    const pool = this.pools.get(id)
+    if (!pool) throw new Error('No active connection')
+    this._validateIdent(schema)
+    this._validateIdent(table)
+    for (const col of columns) this._validateIdent(col)
+
+    if (!Array.isArray(columns) || columns.length === 0) {
+      return { ok: true, inserted: 0 }
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return { ok: true, inserted: 0 }
+    }
+
+    const qualified = `${this._qi(schema)}.${this._qi(table)}`
+    const colList = columns.map((c) => this._qi(c)).join(', ')
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      let inserted = 0
+      // PostgreSQL accepts at most ~65535 parameters per query.
+      // Cap at 500 rows for normal tables; reduce for very wide tables.
+      const CHUNK = Math.max(1, Math.min(500, Math.floor(60000 / columns.length)))
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK)
+        const params = []
+        const valueClauses = chunk.map((row) => {
+          const placeholders = columns.map((_, ci) => {
+            params.push(row[ci])
+            return `$${params.length}`
+          })
+          return `(${placeholders.join(', ')})`
+        })
+        const sql = `INSERT INTO ${qualified} (${colList}) VALUES ${valueClauses.join(', ')}`
+        const res = await client.query(sql, params)
+        inserted += res.rowCount
+      }
+      await client.query('COMMIT')
+      return { ok: true, inserted }
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {})
+      return { ok: false, error: this._friendlyError(err), inserted: 0 }
+    } finally {
+      client.release()
+    }
+  }
+
   async countTableRows(id, schema, table, filters = []) {
     const pool = this.pools.get(id)
     if (!pool) throw new Error('No active connection')

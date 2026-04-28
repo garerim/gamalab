@@ -25,7 +25,9 @@
       "Bash(sed -n '1,112p' \"C:/Users/garer/OneDrive/Bureau/Dev_FrontEnd/Next/gamalab/src/components/HistoryList.jsx\")",
       "Bash(node -c electron/services/snippets.service.js)",
       "Bash(node -c electron/preload.js)",
-      "Bash(node -c electron/services/db.service.js)"
+      "Bash(node -c electron/services/db.service.js)",
+      "Bash(npm install *)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\('papaparse:', p.dependencies.papaparse\\);\")"
     ]
   }
 }

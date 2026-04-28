@@ -234,6 +234,10 @@ ipcMain.handle('db:export-rows', async (_evt, id, schema, table, options) => {
   return await dbService.exportRows(id, schema, table, options)
 })
 
+ipcMain.handle('db:import-rows', async (_evt, id, schema, table, columns, rows) => {
+  return await dbService.importRows(id, schema, table, columns, rows)
+})
+
 ipcMain.handle('db:list-schema-info', async (_evt, id) => {
   return await dbService.listSchemaInfo(id)
 })
@@ -268,6 +272,31 @@ ipcMain.handle('dialog:save-png', async (_evt, { defaultPath, dataUrl }) => {
   const buf = Buffer.from(match[1], 'base64')
   await fs.writeFile(result.filePath, buf)
   return { canceled: false, filePath: result.filePath }
+})
+
+ipcMain.handle('dialog:open-csv', async (_evt, options = {}) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import CSV',
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+    properties: ['openFile'],
+    ...options,
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true }
+  }
+  const filePath = result.filePaths[0]
+  try {
+    const content = await fs.readFile(filePath, 'utf8')
+    const stats = await fs.stat(filePath)
+    return {
+      canceled: false,
+      content,
+      filename: path.basename(filePath),
+      sizeBytes: stats.size,
+    }
+  } catch (err) {
+    return { canceled: false, error: err.message }
+  }
 })
 
 ipcMain.handle('dialog:save-export', async (_evt, { defaultPath, content, format }) => {

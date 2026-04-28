@@ -21,6 +21,7 @@ import {
   Filter as FilterIcon,
   Link2,
   Download,
+  Upload,
   Table as TableIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -389,6 +390,8 @@ export function TableBrowser() {
   } = useAppStore()
   const updateTabContent = useAppStore((s) => s.updateTabContent)
   const activeTabId = useAppStore((s) => s.activeTabId)
+  const setImportCsvDialogOpen = useAppStore((s) => s.setImportCsvDialogOpen)
+  const setImportCsvContext = useAppStore((s) => s.setImportCsvContext)
   const { activeConnection } = useDatabase()
   const {
     columns,
@@ -706,6 +709,25 @@ export function TableBrowser() {
     return () => document.removeEventListener('mousedown', handler)
   }, [exportMenuOpen])
 
+  const handleImportCsv = async () => {
+    if (!activeConnection || !activeTable) return
+    const result = await window.gamalab.dialog.openCsv()
+    if (result.canceled) return
+    if (result.error) {
+      showToast(`Failed to read CSV: ${result.error}`, 'error')
+      return
+    }
+    setImportCsvContext({
+      connectionId: activeConnection.id,
+      schema: activeTable.schema,
+      table: activeTable.name,
+      content: result.content,
+      filename: result.filename,
+      sizeBytes: result.sizeBytes,
+    })
+    setImportCsvDialogOpen(true)
+  }
+
   const handleExport = async (format, scope) => {
     if (!activeConnection || !activeTable) return
     setExportMenuOpen(false)
@@ -826,6 +848,16 @@ export function TableBrowser() {
           <Button size="sm" variant="ghost" onClick={refresh} disabled={loading}>
             <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             Refresh
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleImportCsv}
+            disabled={!activeConnection || !activeTable}
+            title="Import CSV into this table"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            Import
           </Button>
           <div className="relative" ref={exportMenuRef}>
             <Button

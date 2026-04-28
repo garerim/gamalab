@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('gamalab', {
     test: (config) => ipcRenderer.invoke('db:test', config),
     exportRows: (id, schema, table, options) =>
       ipcRenderer.invoke('db:export-rows', id, schema, table, options),
+    importRows: (id, schema, table, columns, rows) =>
+      ipcRenderer.invoke('db:import-rows', id, schema, table, columns, rows),
     listSchemaInfo: (id) => ipcRenderer.invoke('db:list-schema-info', id),
     listDatabases: (id) => ipcRenderer.invoke('db:list-databases', id),
     createDatabase: (id, name, options) =>
@@ -64,6 +66,7 @@ contextBridge.exposeInMainWorld('gamalab', {
     name: () => ipcRenderer.invoke('app:name'),
   },
   dialog: {
+    openCsv: (options) => ipcRenderer.invoke('dialog:open-csv', options),
     saveExport: (options) => ipcRenderer.invoke('dialog:save-export', options),
     savePng: (options) => ipcRenderer.invoke('dialog:save-png', options),
   },
