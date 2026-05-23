@@ -1,23 +1,16 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs/promises')
-const Store = require('electron-store')
 const DockerService = require('./services/docker.service')
 const DbService = require('./services/db.service')
 const credentialStore = require('./services/credentialStore.service')
 const layoutStore = require('./services/layoutStore.service')
 const logger = require('./services/logger.service')
 const snippetsService = require('./services/snippets.service')
+const store = require('./services/store.service')
+const aiService = require('./services/ai.service')
 
 const isDev = process.env.NODE_ENV === 'development'
-const store = new Store({
-  name: 'config',
-  defaults: {
-    connections: [],
-    queryHistory: [],
-    theme: 'dark',
-  },
-})
 
 const dockerService = new DockerService()
 const dbService = new DbService()
@@ -380,6 +373,51 @@ ipcMain.handle('store:set', (_evt, key, value) => {
   return store.set(key, value)
 })
 ipcMain.handle('store:delete', (_evt, key) => store.delete(key))
+
+// ============ IPC: AI ============
+ipcMain.handle('ai:generate', async (evt, { prompt, provider, tier, schemaInfo }) => {
+  aiService.generate({
+    prompt,
+    provider,
+    tier,
+    schemaInfo,
+    onChunk: (data) => {
+      if (!evt.sender.isDestroyed()) evt.sender.send('ai:chunk', data)
+    },
+    onDone: (data) => {
+      if (!evt.sender.isDestroyed()) evt.sender.send('ai:done', data)
+    },
+    onError: (data) => {
+      if (!evt.sender.isDestroyed()) evt.sender.send('ai:error', data)
+    },
+  })
+  return true
+})
+
+ipcMain.handle('ai:abort', () => {
+  aiService.abort()
+  return true
+})
+
+ipcMain.handle('ai:save-key', async (_evt, { provider, key }) => {
+  const encrypted = credentialStore.encrypt(key)
+  if (!encrypted) return { ok: false, error: 'OS keychain not available' }
+  await store.set(`ai.${provider}.key`, encrypted)
+  return { ok: true }
+})
+
+ipcMain.handle('ai:has-key', async (_evt, provider) => {
+  return !!(await store.get(`ai.${provider}.key`))
+})
+
+ipcMain.handle('ai:delete-key', async (_evt, provider) => {
+  await store.delete(`ai.${provider}.key`)
+  return { ok: true }
+})
+
+ipcMain.handle('ai:test-key', async (_evt, provider) => {
+  return await aiService.testKey(provider)
+})
 
 // ============ IPC: System ============
 ipcMain.handle('app:version', () => app.getVersion())

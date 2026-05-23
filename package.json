@@ -129,6 +129,7 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.1",
     "@dagrejs/dagre": "^1.1.8",
     "@monaco-editor/react": "^4.6.0",
     "@radix-ui/react-dialog": "^1.0.5",
@@ -146,6 +147,7 @@
     "electron-store": "^8.2.0",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.344.0",
+    "openai": "^4.104.0",
     "papaparse": "^5.5.3",
     "pg": "^8.11.3",
     "react": "^18.2.0",

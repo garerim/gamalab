@@ -17,8 +17,10 @@ import { WelcomeDialog } from '@/components/WelcomeDialog'
 import { AboutDialog } from '@/components/AboutDialog'
 import { SaveSnippetDialog } from '@/components/SaveSnippetDialog'
 import { SnippetPalette } from '@/components/SnippetPalette'
+import { AiBar } from '@/components/AiBar'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImportCsvDialog } from '@/components/ImportCsvDialog'
+import { SettingsDialog } from '@/components/SettingsDialog'
 import { Toast } from '@/components/Toast'
 import { StatusBar } from '@/components/StatusBar'
 import { useAppStore } from '@/store/appStore'
@@ -26,6 +28,7 @@ import { useDatabase } from '@/hooks/useDatabase'
 import { useHealthCheck } from '@/hooks/useHealthCheck'
 import { useTabKeybindings } from '@/hooks/useTabKeybindings'
 import { useSnippetKeybindings } from '@/hooks/useSnippetKeybindings'
+import { useAiKeybindings } from '@/hooks/useAiKeybindings'
 
 export default function App() {
   const initialize = useAppStore((s) => s.initialize)
@@ -38,6 +41,7 @@ export default function App() {
   useHealthCheck()
   useTabKeybindings()
   useSnippetKeybindings()
+  useAiKeybindings()
 
   useEffect(() => {
     initialize()
@@ -81,6 +85,7 @@ export default function App() {
                   <Panel defaultSize={50} minSize={20}>
                     <div className="flex h-full flex-col">
                       <QueryTabBar />
+                      <AiBar />
                       <div className="min-h-0 flex-1">
                         <QueryEditor onRun={handleRunQuery} />
                       </div>
@@ -109,6 +114,7 @@ export default function App() {
         <SnippetPalette />
         <ConfirmDialog />
         <ImportCsvDialog />
+        <SettingsDialog />
         <Toast />
       </div>
     </TooltipProvider>

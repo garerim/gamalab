@@ -60,6 +60,29 @@ contextBridge.exposeInMainWorld('gamalab', {
   credentials: {
     isEncrypted: () => ipcRenderer.invoke('credentials:is-encrypted'),
   },
+  ai: {
+    generate: (opts) => ipcRenderer.invoke('ai:generate', opts),
+    abort: () => ipcRenderer.invoke('ai:abort'),
+    saveKey: (provider, key) => ipcRenderer.invoke('ai:save-key', { provider, key }),
+    hasKey: (provider) => ipcRenderer.invoke('ai:has-key', provider),
+    deleteKey: (provider) => ipcRenderer.invoke('ai:delete-key', provider),
+    testKey: (provider) => ipcRenderer.invoke('ai:test-key', provider),
+    onChunk: (cb) => {
+      const handler = (_e, data) => cb(data)
+      ipcRenderer.on('ai:chunk', handler)
+      return () => ipcRenderer.removeListener('ai:chunk', handler)
+    },
+    onDone: (cb) => {
+      const handler = (_e, data) => cb(data)
+      ipcRenderer.on('ai:done', handler)
+      return () => ipcRenderer.removeListener('ai:done', handler)
+    },
+    onError: (cb) => {
+      const handler = (_e, data) => cb(data)
+      ipcRenderer.on('ai:error', handler)
+      return () => ipcRenderer.removeListener('ai:error', handler)
+    },
+  },
   app: {
     version: () => ipcRenderer.invoke('app:version'),
     platform: () => ipcRenderer.invoke('app:platform'),

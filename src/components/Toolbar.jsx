@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Info, Play, Database, Sun, Moon } from 'lucide-react'
+import { Plus, RefreshCw, Info, Play, Database, Sun, Moon, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Logo } from '@/components/Logo'
@@ -12,6 +12,7 @@ export function Toolbar({ onRunQuery }) {
   const setCreateDialogOpen = useAppStore((s) => s.setCreateDialogOpen)
   const setAboutOpen = useAppStore((s) => s.setAboutOpen)
   const setWelcomeDialogOpen = useAppStore((s) => s.setWelcomeDialogOpen)
+  const setSettingsDialogOpen = useAppStore((s) => s.setSettingsDialogOpen)
   const theme = useAppStore((s) => s.theme)
   const toggleTheme = useAppStore((s) => s.toggleTheme)
   const activeTab = useAppStore((s) =>
@@ -94,6 +95,15 @@ export function Toolbar({ onRunQuery }) {
         ) : (
           <Badge variant="outline">Checking…</Badge>
         )}
+
+        <Button
+          size="iconSm"
+          variant="ghost"
+          onClick={() => setSettingsDialogOpen(true)}
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
 
         <Button
           size="iconSm"

@@ -32,6 +32,23 @@ export const useAppStore = create(
   importCsvDialogOpen: false,
   importCsvContext: null,
 
+  // --- AI assistant state ---
+  aiSettings: {
+    defaultProvider: 'claude',     // 'claude' | 'openai'
+    defaultTier: 'fast',           // 'fast' | 'smart'
+    hasClaudeKey: false,           // mirrors disk state, updated on save/delete
+    hasOpenAIKey: false,
+  },
+  aiBarOpen: false,
+  aiCurrentPrompt: '',
+  aiGenerating: false,
+  aiLastResult: null,              // { tokensIn, cachedTokens, tokensOut, costUsd } | null
+  aiPromptHistory: [],             // ring buffer max 20 — in-memory only
+
+  // --- Settings dialog state ---
+  settingsDialogOpen: false,
+  settingsActiveTab: 'general',    // 'general' | 'ai'
+
   // --- Query tabs (new) ---
   queryTabs: [
     {
@@ -273,6 +290,23 @@ export const useAppStore = create(
   setImportCsvDialogOpen: (open) => set({ importCsvDialogOpen: open }),
   setImportCsvContext: (ctx) => set({ importCsvContext: ctx }),
 
+  // --- AI / Settings actions ---
+  setAiSettings: (patch) =>
+    set((s) => ({ aiSettings: { ...s.aiSettings, ...patch } })),
+  setAiBarOpen: (open) => set({ aiBarOpen: open }),
+  setAiCurrentPrompt: (prompt) => set({ aiCurrentPrompt: prompt }),
+  setAiGenerating: (g) => set({ aiGenerating: g }),
+  setAiLastResult: (r) => set({ aiLastResult: r }),
+  pushAiPromptHistory: (p) =>
+    set((s) => {
+      const trimmed = (p || '').trim()
+      if (!trimmed) return s
+      const filtered = s.aiPromptHistory.filter((x) => x !== trimmed)
+      return { aiPromptHistory: [trimmed, ...filtered].slice(0, 20) }
+    }),
+  setSettingsDialogOpen: (open) => set({ settingsDialogOpen: open }),
+  setSettingsActiveTab: (tab) => set({ settingsActiveTab: tab }),
+
   setSidebarTab: (tab) => set({ sidebarTab: tab }),
   setAboutOpen: (open) => set({ aboutOpen: open }),
   setCreateDialogOpen: (open) => set({ createDialogOpen: open }),
@@ -374,6 +408,25 @@ export const useAppStore = create(
     // Ensure an active tab is selected
     if (!get().activeTabId && get().queryTabs.length > 0) {
       set({ activeTabId: get().queryTabs[0].id })
+    }
+    // Hydrate AI settings from disk (provider/tier defaults + key presence flags)
+    try {
+      const [defaultProvider, defaultTier, hasClaudeKey, hasOpenAIKey] = await Promise.all([
+        window.gamalab.store.get('ai.defaultProvider'),
+        window.gamalab.store.get('ai.defaultTier'),
+        window.gamalab.ai.hasKey('claude'),
+        window.gamalab.ai.hasKey('openai'),
+      ])
+      set({
+        aiSettings: {
+          defaultProvider: defaultProvider || 'claude',
+          defaultTier: defaultTier || 'fast',
+          hasClaudeKey,
+          hasOpenAIKey,
+        },
+      })
+    } catch (err) {
+      // Defaults remain; AI features will surface "no key" CTA naturally
     }
   },
     }),

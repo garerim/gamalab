@@ -6,6 +6,8 @@ import { confirm } from '@/lib/confirm'
 export function useTabKeybindings() {
   useEffect(() => {
     const handler = (e) => {
+      // If the AI bar is open and focused, ignore tab keybindings
+      if (useAppStore.getState().aiBarOpen) return
       // If the snippet palette is open, ignore tab keybindings to avoid surprising background mutations.
       if (useAppStore.getState().snippetPaletteOpen) return
       const viewMode = useAppStore.getState().viewMode

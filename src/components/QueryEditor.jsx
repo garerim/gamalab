@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import Editor, { loader } from '@monaco-editor/react'
 import { format } from 'sql-formatter'
-import { Wand2, Copy, Trash2, Bookmark } from 'lucide-react'
+import { Wand2, Copy, Trash2, Bookmark, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store/appStore'
 import { useSchemaInfo } from '@/hooks/useSchemaInfo'
@@ -39,6 +39,8 @@ export function QueryEditor({ onRun }) {
   const showToast = useAppStore((s) => s.showToast)
   const openSaveSnippetDialog = useAppStore((s) => s.openSaveSnippetDialog)
   const theme = useAppStore((s) => s.theme)
+  const aiBarOpen = useAppStore((s) => s.aiBarOpen)
+  const setAiBarOpen = useAppStore((s) => s.setAiBarOpen)
   const schemaInfo = useSchemaInfo()
   const editorRef = useRef(null)
   const monacoRef = useRef(null)
@@ -274,6 +276,15 @@ export function QueryEditor({ onRun }) {
         <div className="flex items-center gap-1">
           <Button size="iconSm" variant="ghost" onClick={formatSql} title="Format (Shift+Alt+F)">
             <Wand2 className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="iconSm"
+            variant="ghost"
+            onClick={() => setAiBarOpen(!aiBarOpen)}
+            title="AI assistant (Ctrl+I)"
+            className={aiBarOpen ? 'text-lab-blue' : ''}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
           </Button>
           <Button size="iconSm" variant="ghost" onClick={copyQuery} title="Copy">
             <Copy className="h-3.5 w-3.5" />
