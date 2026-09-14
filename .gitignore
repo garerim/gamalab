@@ -41,3 +41,10 @@ out/
 .superpowers/
 
 # Feature spec & plan artifacts are committed — only the session runtime is ignored
+
+# Claude Code local settings & session worktrees (personal, do not distribute)
+.claude/settings.local.json
+.claude/worktrees/
+
+# Generated Store assets (regenerable via build/gen-store-assets.ps1)
+build/store/

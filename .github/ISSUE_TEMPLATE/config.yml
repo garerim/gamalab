@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Report a security vulnerability
+    url: https://github.com/garerim/gamalab/security/advisories/new
+    about: Please do NOT open a public issue for security issues — use a private advisory instead.
+  - name: 💬 Ask a question / discussion
+    url: https://github.com/garerim/gamalab/discussions
+    about: Have a question about usage or ideas to discuss? Start a discussion.

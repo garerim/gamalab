@@ -1,9 +1,33 @@
 {
   "name": "gamalab",
   "productName": "GamaLab",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Your Database Laboratory - Manage PostgreSQL databases with Docker",
-  "author": "GamaLab Team",
+  "author": {
+    "name": "Gama EI",
+    "email": "contact@gamalab.dev",
+    "url": "https://gamalab.dev"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/garerim/gamalab#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/garerim/gamalab.git"
+  },
+  "bugs": {
+    "url": "https://github.com/garerim/gamalab/issues"
+  },
+  "keywords": [
+    "postgresql",
+    "sql",
+    "database",
+    "client",
+    "workbench",
+    "electron",
+    "docker",
+    "ai",
+    "developer-tools"
+  ],
   "main": "electron/main.js",
   "type": "commonjs",
   "scripts": {
@@ -21,7 +45,7 @@
   "build": {
     "appId": "com.gamalab.app",
     "productName": "GamaLab",
-    "copyright": "Copyright © ${author}",
+    "copyright": "Copyright © 2026 Gama EI",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -71,7 +95,8 @@
           ]
         }
       ],
-      "icon": "build/icons/win/icon.ico"
+      "icon": "build/icons/win/icon.ico",
+      "publisherName": "Gama EI"
     },
     "nsis": {
       "oneClick": false,
